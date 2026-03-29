@@ -130,6 +130,7 @@ public class RoundListener implements Listener {
 
         if (!finalPick) {
             playMinorReveal(world, center, session);
+            spawnRewardDisplay(runtime, session, player, reward, center, 18L, false);
             return;
         }
 
