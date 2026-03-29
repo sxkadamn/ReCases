@@ -38,6 +38,11 @@ public class AnimationService implements OpeningAnimationRegistry {
     public static final String SWORDS = "swords";
     public static final String ANCHOR_RISE = "anchor-rise";
     public static final String RAINLY = "rainly";
+    private static final int CLASSIC_SELECTIONS = 4;
+    private static final int CIRCLE_SELECTIONS = 6;
+    private static final int METEOR_DROP_SELECTIONS = 4;
+    private static final int VOID_RIFT_SELECTIONS = 4;
+    private static final int SWORDS_SELECTIONS = 4;
 
     private final JavaPlugin plugin;
     private final Map<String, OpeningAnimationRegistration> animations = new LinkedHashMap<>();
@@ -136,12 +141,12 @@ public class AnimationService implements OpeningAnimationRegistry {
     }
 
     private void registerBuiltIns() {
-        registerBuiltIn(CLASSIC, "Classic", 1, classicFactory());
-        registerBuiltIn(CIRCLE, "Circle", 2, context -> new CircleOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
-        registerBuiltIn(METEOR_DROP, "Meteor Drop", 1, context -> new MeteorDropOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
-        registerBuiltIn(VOID_RIFT, "Void Rift", 1, context -> new VoidRiftOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
+        registerBuiltIn(CLASSIC, "Classic", CLASSIC_SELECTIONS, classicFactory());
+        registerBuiltIn(CIRCLE, "Circle", CIRCLE_SELECTIONS, context -> new CircleOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
+        registerBuiltIn(METEOR_DROP, "Meteor Drop", METEOR_DROP_SELECTIONS, context -> new MeteorDropOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
+        registerBuiltIn(VOID_RIFT, "Void Rift", VOID_RIFT_SELECTIONS, context -> new VoidRiftOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(WHEEL, "Wheel", 0, context -> new WheelOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
-        registerBuiltIn(SWORDS, "Swords", 1, context -> new SwordsOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
+        registerBuiltIn(SWORDS, "Swords", SWORDS_SELECTIONS, context -> new SwordsOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(ANCHOR_RISE, "Anchor Rise", 1, context -> new AnchorRiseOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(RAINLY, "Rainly", 1, context -> new RainlyOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
     }

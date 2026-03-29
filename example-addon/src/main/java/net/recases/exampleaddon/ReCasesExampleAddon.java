@@ -22,8 +22,8 @@ public final class ReCasesExampleAddon extends JavaPlugin {
                         this,
                         ANIMATION_ID,
                         "Кристальный всплеск",
-                        1,
-                        CrystalBurstAnimation::new
+                        3,
+                        context -> new CrystalBurstAnimation(this, context)
                 )
         );
 

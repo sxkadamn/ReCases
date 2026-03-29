@@ -9,6 +9,7 @@ import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
 public final class CrystalBurstAnimation implements OpeningAnimation {
@@ -19,9 +20,11 @@ public final class CrystalBurstAnimation implements OpeningAnimation {
             {-2, 0, -2}
     };
 
+    private final Plugin plugin;
     private final OpeningAnimationContext context;
 
-    public CrystalBurstAnimation(OpeningAnimationContext context) {
+    public CrystalBurstAnimation(Plugin plugin, OpeningAnimationContext context) {
+        this.plugin = plugin;
         this.context = context;
     }
 
@@ -64,7 +67,7 @@ public final class CrystalBurstAnimation implements OpeningAnimation {
                     spawnSelectionChests(base);
                 }
             }
-        }.runTaskTimer(context.getApi().getPlugin(), 0L, 4L);
+        }.runTaskTimer(plugin, 0L, 4L);
 
         return true;
     }

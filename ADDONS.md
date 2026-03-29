@@ -66,7 +66,7 @@ api.getOpeningAnimationRegistry().register(
                 "my-addon-animation",
                 "Моя анимация аддона",
                 1,
-                context -> new MyOpeningAnimation(context)
+                context -> new MyOpeningAnimation(this, context)
         )
 );
 ```
@@ -87,6 +87,7 @@ api.getOpeningAnimationRegistry().register(
 - `registerTargetChest(location)` и `registerTargetEntity(entity)`, чтобы ваши цели работали с логикой выбора ReCases.
 - `abortOpening(refundKey)` и `completeOpening()` для явного управления процессом.
 - `removeRuntimeHologram()`, если анимации нужно скрыть стандартный голограм кейса.
+- Для `BukkitRunnable` и scheduler используйте экземпляр собственного плагина аддона, а не API-объект.
 
 ## Использование в конфиге
 
