@@ -1,12 +1,12 @@
 # ReCases Addon API
 
-`ReCases` предоставляет Bukkit service для регистрации пользовательских анимаций открытия из других плагинов.
+`ReCases` предоставляет Bukkit-сервис для регистрации пользовательских анимаций открытия из других плагинов.
 
 ## Maven-зависимость
 
 Публичный API вынесен в отдельный артефакт.
 
-Для локальной сборки внутри reactor:
+Для локальной сборки внутри multi-module проекта:
 
 ```xml
 <dependency>
@@ -30,9 +30,9 @@
 
 ```xml
 <dependency>
-    <groupId>com.github.<GitHubUser>.<RepoName></groupId>
+    <groupId>com.github.YOUR_GITHUB_USER.YOUR_REPOSITORY</groupId>
     <artifactId>recases-api</artifactId>
-    <version><GitTag></version>
+    <version>YOUR_TAG</version>
     <scope>provided</scope>
 </dependency>
 ```
@@ -48,7 +48,7 @@ depend:
 
 После этого получите API через Bukkit `ServicesManager`:
 
-```java
+```
 import net.recases.api.ReCasesApi;
 import net.recases.api.animation.OpeningAnimationContext;
 import net.recases.api.animation.OpeningAnimationRegistration;
@@ -69,6 +69,7 @@ api.getOpeningAnimationRegistry().register(
                 context -> new MyOpeningAnimation(this, context)
         )
 );
+
 ```
 
 ## Правила регистрации

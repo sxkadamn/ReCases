@@ -16,10 +16,9 @@
     <name>ReCases плагин</name>
 
     <build>
-        <sourceDirectory>${project.basedir}/../src/main/java</sourceDirectory>
         <resources>
             <resource>
-                <directory>${project.basedir}/../src/main/resources</directory>
+                <directory>src/main/resources</directory>
                 <filtering>true</filtering>
             </resource>
         </resources>
@@ -30,9 +29,6 @@
                 <version>3.8.1</version>
                 <configuration>
                     <release>${java.version}</release>
-                    <excludes>
-                        <exclude>net/recases/api/**/*.java</exclude>
-                    </excludes>
                 </configuration>
             </plugin>
             <plugin>

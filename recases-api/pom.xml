@@ -16,7 +16,6 @@
     <name>ReCases API для аддонов</name>
 
     <build>
-        <sourceDirectory>${project.basedir}/../src/main/java</sourceDirectory>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -24,9 +23,6 @@
                 <version>3.8.1</version>
                 <configuration>
                     <release>${java.version}</release>
-                    <includes>
-                        <include>net/recases/api/**/*.java</include>
-                    </includes>
                 </configuration>
             </plugin>
         </plugins>
