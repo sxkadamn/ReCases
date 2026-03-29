@@ -1,0 +1,275 @@
+# Версия структуры конфига
+# Нужна плагину для автоматической миграции старых конфигов после обновления
+config-version: 4
+
+settings:
+  animations:
+    # Глобальные множители интенсивности анимации.
+    intensity:
+      # Масштабирует количество частиц в сценах открытия и объявления победителя.
+      particles: 1.0
+      # Масштабирует громкость звука в сценах открытия и объявления победителя.
+      sound: 1.0
+    winner-item:
+      # Амплитуда горизонтальной тряски для парящего предмета награды.
+      shake-amplitude: 0.06
+      # Базовая высота подъема над точкой появления.
+      levitation-height: 0.45
+      # Сила вертикального покачивания, пока предмет парит.
+      bob-strength: 0.12
+    wheel:
+      # Количество призов на колесе.
+      prize-count: 8
+      # Радиус колеса относительно центра кейса.
+      radius: 1.65
+      # Смещение центра колеса по Y.
+      y-offset: 0.15
+      # Скорость появления сегментов.
+      spawn-interval-ticks: 6
+      # Стартовая скорость вращения.
+      max-speed: 15
+      # Минимальная скорость перед доводкой до победителя.
+      min-speed: 2
+      # Как быстро колесо замедляется.
+      speed-fade: 0.07
+    anchor-rise:
+      rise-duration: 30
+      hover-duration: 20
+      fall-duration: 20
+      item-change-interval: 5
+      rise-speed: 0.2
+      rise-height: 6.0
+      fall-multiplier: 0.05
+      fake-reward-pool-size: 12
+    rainly:
+      falling-particle: DRIPPING_OBSIDIAN_TEAR
+      reward-change-interval: 4
+      reveal-ticks: 30
+      end-ticks: 70
+  storage:
+    # sqlite - локальная база в папке плагина
+    # mysql - внешняя MySQL база
+    type: sqlite
+    # Если найден старый keys.yml, плагин перенесет данные в выбранное хранилище.
+    migrate-from-yaml: true
+    sqlite:
+      # Имя файла SQLite базы внутри папки плагина.
+      file: keys.db
+    mysql:
+      # Настройки используются только если type: mysql
+      host: 127.0.0.1
+      port: 3306
+      database: recases
+      username: root
+      password: ''
+      use-ssl: false
+
+messages:
+  # Все сообщения поддерживают hex-цвета формата #ffcc00
+  no-permission: '#ff6b6bНедостаточно прав.'
+  player-only: '#ff6b6bЭта команда доступна только игроку.'
+  player-not-found: '#ff6b6bИгрок не найден.'
+  command-unknown: '#ff6b6bНеизвестная подкоманда.'
+  amount-invalid: '#ff6b6bКоличество должно быть числом.'
+  amount-positive: '#ff6b6bКоличество не может быть отрицательным.'
+  menu-not-configured: '#ff6b6bВ конфиге нет профилей кейсов.'
+  case-not-found: "#ff6b6bПрофиль кейса '#ffffff%case%#ff6b6b' не найден."
+  case-list-empty: '#ff6b6bВ конфиге нет настроенных профилей кейсов.'
+  case-list-format: '#ffd166Профили кейсов: #ffffff%cases%'
+  instance-list-empty: '#ff6b6bФизические кейсы не настроены.'
+  instance-list-format: '#ffd166Физические кейсы: #ffffff%instances%'
+  instance-not-found: "#ff6b6bФизический кейс '#ffffff%instance%#ff6b6b' не найден."
+  case-given: '#ffd166Вы выдали игроку #ffffff%player% #ffd166%amount% ключ(ей) профиля #ffffff%case%#ffd166.'
+  case-taken: '#ffd166Вы забрали у игрока #ffffff%player% #ffd166%amount% ключ(ей) профиля #ffffff%case%#ffd166.'
+  case-set: '#ffd166Вы установили игроку #ffffff%player% #ffd166%amount% ключ(ей) профиля #ffffff%case%#ffd166.'
+  case-balance: '#ffd166У игрока #ffffff%player% #ffd166%amount% ключ(ей) профиля #ffffff%case%#ffd166.'
+  case-balance-after: '#a8dadcТеперь у игрока #ffffff%player% #a8dadcбаланс: #ffffff%amount% #a8dadcключ(ей) профиля #ffffff%case%#a8dadc.'
+  case-position-saved: '#80ed99Позиция физического кейса #ffffff%instance% #80ed99обновлена.'
+  reload-complete: '#80ed99Конфиг и runtime кейсов перезагружены.'
+  no-keys: '#ff6b6bУ вас нет ключей от этого профиля кейса.'
+  case-busy: '#ff6b6bЭтот кейс уже открывает другой игрок.'
+  case-opened-by-other: '#ff6b6bЭтот кейс сейчас открывает другой игрок.'
+  case-no-rewards: '#ff6b6bДля этого профиля кейса не настроены награды.'
+  case-unavailable: '#ff6b6bЭта точка кейса сейчас недоступна. Попробуйте позже или перезагрузите плагин.'
+  case-reward-failed: '#ff6b6bНе удалось выбрать награду. Проверьте конфиг кейса.'
+  case-reward-received: '#80ed99Вы получили награду: #ffffff%reward%'
+  case-opening-started: '#ffd166Вы начали открытие профиля #ffffff%case% #ffd166на точке #ffffff%instance% #ffd166с анимацией #ffffff%animation%#ffd166.'
+  case-select-target-title: '#ffd166Сделайте выбор'
+  case-select-target-subtitle: '#ffffffАнимация: %animation%'
+  case-select-target-chat: '#a8dadcНажмите по сущности, чтобы завершить открытие.'
+  usage-keys: '#ffd166/cases keys <player> <profile>'
+  usage-give: '#ffd166/cases give <player> <profile> <amount>'
+  usage-take: '#ffd166/cases take <player> <profile> <amount>'
+  usage-setamount: '#ffd166/cases setamount <player> <profile> <amount>'
+  usage-set: '#ffd166/cases set <instance>'
+  help:
+    - '#ffd166/%label% help #a8dadc- показать помощь'
+    - '#ffd166/%label% list #a8dadc- список профилей кейсов'
+    - '#ffd166/%label% instances #a8dadc- список физических кейсов'
+    - '#ffd166/%label% keys <player> <profile> #a8dadc- посмотреть баланс ключей'
+    - '#ffd166/%label% give <player> <profile> <amount> #a8dadc- выдать ключи'
+    - '#ffd166/%label% take <player> <profile> <amount> #a8dadc- забрать ключи'
+    - '#ffd166/%label% setamount <player> <profile> <amount> #a8dadc- установить количество'
+    - '#ffd166/%label% set <instance> #a8dadc- сохранить позицию физического кейса'
+    - '#ffd166/%label% reload #a8dadc- перезагрузить runtime и перечитать конфиг'
+
+console:
+  yaml-migrated: 'Migrated keys.yml to %storage% storage.'
+  unknown-reward-action: 'Unknown reward command action: %action%'
+  storage-fallback: 'MySQL is unavailable. Falling back to SQLite'
+
+menus:
+  case-selector:
+    # Заголовок меню выбора профиля кейса.
+    title: '#ffd166Кейсы'
+    # Количество рядов: от 1 до 6
+    rows: 6
+
+leaderboards:
+  # Как часто обновлять голограммы топов.
+  update-interval-seconds: 30
+  holograms:
+    top-opens-global:
+      # Координаты самой голограммы.
+      location:
+        world: world
+        x: 238.0
+        y: 73.2
+        z: 244.0
+      views:
+        global-opens:
+          # Глобальный топ по количеству открытий.
+          type: opens
+          limit: 5
+          header:
+            - '#ffd166&lТОП ОТКРЫТИЙ'
+            - '#ffffffРежим: %scope%'
+            - '#a8dadcКлик: %next_scope%'
+          lines:
+            - '#a8dadc#%position% #ffffff%player% #ffd166- %value%'
+          empty-lines:
+            - '#ff6b6bПока нет данных'
+        donate-rare:
+          # Топ редких наград по профилю donate.
+          type: rare
+          profile: donate
+          limit: 5
+          header:
+            - '#74c0fc&lТОП РЕДКИХ DONATE'
+            - '#ffffffРежим: %scope%'
+            - '#a8dadcКлик: %next_scope%'
+          lines:
+            - '#a8dadc#%position% #ffffff%player% #74c0fc- %value%'
+          empty-lines:
+            - '#ff6b6bПока нет данных'
+        donate-guaranteed:
+          # Топ срабатываний гаранта по профилю donate.
+          type: guaranteed
+          profile: donate
+          limit: 5
+          header:
+            - '#80ed99&lТОП ГАРАНТА DONATE'
+            - '#ffffffРежим: %scope%'
+            - '#a8dadcКлик: %next_scope%'
+          lines:
+            - '#a8dadc#%position% #ffffff%player% #80ed99- %value%'
+          empty-lines:
+            - '#ff6b6bПока нет данных'
+      # views = список экранов одной и той же голограммы.
+      # Игрок кликает по голограмме и она переключается на следующий view по кругу.
+      # type: opens | rare | guaranteed
+      # profile указывается только если нужен топ по конкретному профилю кейса.
+      # Доступные плейсхолдеры в строках:
+      # %position% - место в топе
+      # %player% - имя игрока
+      # %value% - значение топа
+      # %scope% - текущая область (global или id профиля)
+      # %next_scope% - что будет показано после следующего клика
+      #
+      # PlaceholderAPI:
+      # %recases_hologram_top-opens-global_scope%
+      # %recases_hologram_top-opens-global_type%
+      # %recases_hologram_top-opens-global_view%
+      # %recases_hologram_top-opens-global_next_scope%
+
+cases:
+  instances:
+    # Здесь задаются физические точки кейсов в мире.
+    # Можно создать несколько отдельных точек: main, vip, spawn и т.д.
+    main:
+      # Анимация именно для этой физической точки.
+      # Если оставить пусто, плагин возьмет анимацию из profile.
+      # Доступно: classic, circle, meteor-drop, void-rift, wheel, swords, anchor-rise, rainly
+      animation: classic
+      location:
+        world: world
+        x: 232.0
+        y: 70.0
+        z: 244.0
+      hologram:
+        # Строки голограммы над физическим кейсом.
+        lines:
+          - '#ffd166&lКЕЙС'
+          - '#ffffffНажмите, чтобы открыть меню'
+
+profiles:
+  # Здесь задаются логические профили кейсов.
+  # Профиль = иконка в меню + набор возможных наград.
+  donate:
+    # Анимация для этого профиля кейса.
+    # Доступно: classic, circle, meteor-drop, void-rift, wheel, swords, anchor-rise, rainly
+    animation: classic
+    guarantee:
+      # После скольких открытий без rare-награды сработает гарант.
+      # 0 = гарант отключен.
+      after-opens: 10
+    menu:
+      # Материал и слот предмета в меню выбора кейса.
+      material: DIAMOND_SWORD
+      slot: 22
+      display: '#ffd166&lДонат-кейс'
+      lore:
+        - '#a8dadcОткройте кейс и выберите сундук.'
+        - '#a8dadcВаших ключей: #ffffff%keys%'
+    rewards:
+      # У каждой награды есть material, name, chance и actions.
+      # chance - вес награды в общем пуле. Чем больше число, тем выше шанс.
+      giga:
+        material: 'HEAD;eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYTZiOGQ4NzQ1ZjZmYzdhMGE3NzM1NGNlMWE5ZjMwNDY4MTdmNjZkMmQzYWZkMWJjZGFjNmQyZDEwZjM3OSJ9fX0='
+        name: '#ffd166ГИГА'
+        rare: true
+        chance: 20
+        actions:
+          # Форматы:
+          # message;<text>
+          # broadcast;<text>
+          # command;<console command>
+          # title;<title>;<subtitle>
+          # lp-group-add;<group>
+          # lp-group-remove;<group>
+          # lp-group-add-temp;<group>;<duration>
+          # lp-permission-set;<permission>;<true|false>
+          - 'message;#ffd166Поздравляем! Вы выиграли #ffffffГИГА'
+          - 'title;#ffd166Поздравляем!;#ffffffТеперь у вас ранг ГИГА'
+          - 'lp-group-add;giga'
+      sword:
+        material: 'ITEM;DIAMOND_SWORD'
+        name: '#74c0fcАлмазный меч'
+        chance: 30
+        actions:
+          - 'message;#ffd166Поздравляем! Вы выиграли #74c0fcАлмазный меч'
+          - 'command;give %player% diamond_sword 1'
+      iron:
+        material: 'ITEM;IRON_SWORD'
+        name: '#f1f3f5Железный меч'
+        chance: 30
+        actions:
+          - 'message;#ffd166Поздравляем! Вы выиграли #f1f3f5Железный меч'
+          - 'command;give %player% iron_sword 1'
+      gold:
+        material: 'ITEM;GOLDEN_SWORD'
+        name: '#ffd166Золотой меч'
+        chance: 20
+        actions:
+          - 'message;#ffd166Поздравляем! Вы выиграли #ffd166Золотой меч'
+          - 'command;give %player% golden_sword 1'

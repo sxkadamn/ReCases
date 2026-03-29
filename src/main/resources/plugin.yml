@@ -1,0 +1,14 @@
+name: ReCases
+version: '${project.version}'
+main: net.recases.ReCases
+api-version: '1.20'
+softdepend:
+  - PlaceholderAPI
+commands:
+  cases:
+    description: Manage cases, keys and plugin state
+    usage: /cases <help|list|instances|keys|give|take|setamount|set|reload|top>
+permissions:
+  recases.admin:
+    default: op
+
