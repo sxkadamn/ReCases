@@ -50,9 +50,3 @@
 - `recases-api` - публичный API для разработчиков аддонов
 - `recases-plugin` - основной плагин `ReCases`
 - `example-addon` - пример внешнего аддона с использованием `recases-api`
-
-## Сборка
-
-```powershell
-mvn -q -DskipTests package
-```
