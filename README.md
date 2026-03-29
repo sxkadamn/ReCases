@@ -1,12 +1,12 @@
 # ReCases
 
-`ReCases` is split into Maven modules so the public addon API can be consumed separately from the main plugin jar.
+`ReCases` разделен на Maven-модули, чтобы публичный API аддонов можно было использовать отдельно от основного JAR-файла плагина
 
 ## JitPack
 
-After you push this repository to GitHub and create a release tag, JitPack can build it directly.
+После того как вы отправите этот репозиторий на GitHub и создадите тег релиза, JitPack сможет собрать его напрямую
 
-Add the repository:
+Добавьте репозиторий в ваш pom.xml:
 
 ```xml
 <repositories>
@@ -17,13 +17,13 @@ Add the repository:
 </repositories>
 ```
 
-For this multi-module repository, JitPack uses:
+Для этого многомодульного репозитория JitPack использует следующие параметры:
 
 - groupId: `com.github.<GitHubUser>.<RepoName>`
-- artifactId: Maven module artifact id
-- version: Git tag, release, or commit hash
+- artifactId: ID Maven-модуля (artifact id)
+- version: Тег Git, релиз или хеш коммита
 
-So the addon API dependency will look like this:
+Таким образом, зависимость для API аддонов будет выглядеть так:
 
 ```xml
 <dependency>
@@ -34,22 +34,22 @@ So the addon API dependency will look like this:
 </dependency>
 ```
 
-If your repository is `sty/lieCases`, the dependency becomes:
+Если ваш репозиторий называется  `sty/ReCases`, зависимость примет вид:
 
 ```xml
 <dependency>
-    <groupId>com.github.sty.lieCases</groupId>
+    <groupId>com.github.sty.ReCases</groupId>
     <artifactId>recases-api</artifactId>
     <version>1.0.0</version>
     <scope>provided</scope>
 </dependency>
 ```
 
-## Modules
+## Модули
 
-- `recases-api` - public API for addon developers
-- `recases-plugin` - main `ReCases` plugin
-- `example-addon` - sample addon using `recases-api`
+- `recases-api` - публичный API для разработчиков аддонов
+- `recases-plugin` - основной плагин `ReCases`
+- `example-addon` - пример аддона, использующий `recases-api`
 
 ## Build
 
