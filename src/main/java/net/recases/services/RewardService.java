@@ -87,12 +87,12 @@ public class RewardService {
                         break;
                     default:
                         plugin.getLogger().warning(plugin.getConfig()
-                                .getString("console.unknown-reward-action", "Unknown reward command action: %action%")
+                                .getString("console.unknown-reward-action", "Неизвестное действие награды: %action%")
                                 .replace("%action%", action));
                         break;
                 }
             } catch (IllegalArgumentException exception) {
-                plugin.getLogger().warning("Skipped reward action '" + action + "': " + exception.getMessage());
+                plugin.getLogger().warning("Действие награды '" + action + "' пропущено: " + exception.getMessage());
             }
         }
     }
@@ -115,7 +115,7 @@ public class RewardService {
     private String requireSafe(String value, String field) {
         String trimmed = value == null ? "" : value.trim();
         if (!SAFE_TOKEN.matcher(trimmed).matches()) {
-            throw new IllegalArgumentException("Unsafe LuckPerms " + field + ": " + value);
+            throw new IllegalArgumentException("Небезопасное значение LuckPerms для поля " + field + ": " + value);
         }
         return trimmed;
     }
@@ -123,7 +123,7 @@ public class RewardService {
     private String parseBoolean(String value) {
         String normalized = value == null ? "true" : value.trim().toLowerCase(Locale.ROOT);
         if (!"true".equals(normalized) && !"false".equals(normalized)) {
-            throw new IllegalArgumentException("Invalid boolean value: " + value);
+            throw new IllegalArgumentException("Некорректное булево значение: " + value);
         }
         return normalized;
     }

@@ -1,12 +1,12 @@
 # ReCases
 
-`ReCases` разделен на Maven-модули, чтобы публичный API аддонов можно было использовать отдельно от основного JAR-файла плагина
+`ReCases` разделен на Maven-модули, чтобы публичный API для аддонов можно было подключать отдельно от основного jar-файла плагина.
 
 ## JitPack
 
-После того как вы отправите этот репозиторий на GitHub и создадите тег релиза, JitPack сможет собрать его напрямую
+После публикации репозитория на GitHub и создания тега релиза JitPack сможет собрать проект напрямую.
 
-Добавьте репозиторий в ваш pom.xml:
+Добавьте репозиторий:
 
 ```xml
 <repositories>
@@ -17,13 +17,13 @@
 </repositories>
 ```
 
-Для этого многомодульного репозитория JitPack использует следующие параметры:
+Для этого multi-module репозитория JitPack использует:
 
-- groupId: `com.github.<GitHubUser>.<RepoName>`
-- artifactId: ID Maven-модуля (artifact id)
-- version: Тег Git, релиз или хеш коммита
+- `groupId`: `com.github.<GitHubUser>.<RepoName>`
+- `artifactId`: идентификатор Maven-модуля
+- `version`: git-тег, релиз или commit hash
 
-Таким образом, зависимость для API аддонов будет выглядеть так:
+Тогда зависимость на API для аддона будет выглядеть так:
 
 ```xml
 <dependency>
@@ -34,11 +34,11 @@
 </dependency>
 ```
 
-Если ваш репозиторий называется  `sty/ReCases`, зависимость примет вид:
+Если ваш репозиторий называется `sxkadamn/ReCases`, зависимость будет такой:
 
 ```xml
 <dependency>
-    <groupId>com.github.sty.ReCases</groupId>
+    <groupId>com.github.sxkadamn.ReCases</groupId>
     <artifactId>recases-api</artifactId>
     <version>1.0.0</version>
     <scope>provided</scope>
@@ -49,5 +49,10 @@
 
 - `recases-api` - публичный API для разработчиков аддонов
 - `recases-plugin` - основной плагин `ReCases`
-- `example-addon` - пример аддона, использующий `recases-api`
+- `example-addon` - пример внешнего аддона с использованием `recases-api`
 
+## Сборка
+
+```powershell
+mvn -q -DskipTests package
+```

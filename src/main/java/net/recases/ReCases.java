@@ -46,7 +46,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     @Override
     public void onEnable() {
         if (!isSupportedServerVersion()) {
-            getLogger().severe("ReCases requires Paper/Spigot 1.20 or newer. Current server version: " + getServer().getBukkitVersion());
+            getLogger().severe("ReCases требует Paper/Spigot 1.20 или новее. Текущая версия сервера: " + getServer().getBukkitVersion());
             getServer().getPluginManager().disablePlugin(this);
             return;
         }

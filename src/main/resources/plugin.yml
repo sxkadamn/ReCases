@@ -6,7 +6,7 @@ softdepend:
   - PlaceholderAPI
 commands:
   cases:
-    description: Manage cases, keys and plugin state
+    description: Управление кейсами, ключами и состоянием плагина
     usage: /cases <help|list|instances|keys|give|take|setamount|set|reload|top>
 permissions:
   recases.admin:

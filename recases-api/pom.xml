@@ -13,7 +13,7 @@
     <artifactId>recases-api</artifactId>
     <packaging>jar</packaging>
 
-    <name>ReCases API</name>
+    <name>ReCases API для аддонов</name>
 
     <build>
         <sourceDirectory>${project.basedir}/../src/main/java</sourceDirectory>

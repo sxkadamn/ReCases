@@ -12,7 +12,7 @@ public final class ReCasesExampleAddon extends JavaPlugin {
     public void onEnable() {
         ReCasesApi api = getServer().getServicesManager().load(ReCasesApi.class);
         if (api == null) {
-            getLogger().severe("ReCases API is unavailable.");
+            getLogger().severe("API ReCases недоступно.");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -21,18 +21,18 @@ public final class ReCasesExampleAddon extends JavaPlugin {
                 OpeningAnimationRegistration.create(
                         this,
                         ANIMATION_ID,
-                        "Crystal Burst",
+                        "Кристальный всплеск",
                         1,
                         CrystalBurstAnimation::new
                 )
         );
 
         if (!registered) {
-            getLogger().severe("Animation id '" + ANIMATION_ID + "' is already registered.");
+            getLogger().severe("Анимация с id '" + ANIMATION_ID + "' уже зарегистрирована.");
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
 
-        getLogger().info("Registered opening animation '" + ANIMATION_ID + "'.");
+        getLogger().info("Зарегистрирована анимация открытия '" + ANIMATION_ID + "'.");
     }
 }

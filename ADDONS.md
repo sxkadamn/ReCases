@@ -1,12 +1,12 @@
 # ReCases Addon API
 
-`ReCases` now exposes a Bukkit service for registering custom opening animations from other plugins.
+`ReCases` предоставляет Bukkit service для регистрации пользовательских анимаций открытия из других плагинов.
 
-## Maven dependency
+## Maven-зависимость
 
-The public API now lives in a separate artifact.
+Публичный API вынесен в отдельный артефакт.
 
-For local reactor builds:
+Для локальной сборки внутри reactor:
 
 ```xml
 <dependency>
@@ -17,7 +17,7 @@ For local reactor builds:
 </dependency>
 ```
 
-For JitPack builds from GitHub:
+Для подключения через JitPack из GitHub:
 
 ```xml
 <repositories>
@@ -37,16 +37,16 @@ For JitPack builds from GitHub:
 </dependency>
 ```
 
-## How to get the API
+## Как получить API
 
-Your addon should depend on `ReCases` in `plugin.yml`:
+В `plugin.yml` аддона должна быть зависимость от `ReCases`:
 
 ```yml
 depend:
   - ReCases
 ```
 
-Then resolve the API from the Bukkit services manager:
+После этого получите API через Bukkit `ServicesManager`:
 
 ```java
 import net.recases.api.ReCasesApi;
@@ -55,7 +55,7 @@ import net.recases.api.animation.OpeningAnimationRegistration;
 
 ReCasesApi api = getServer().getServicesManager().load(ReCasesApi.class);
 if (api == null) {
-    getLogger().severe("ReCases API is unavailable.");
+    getLogger().severe("API ReCases недоступно.");
     getServer().getPluginManager().disablePlugin(this);
     return;
 }
@@ -64,50 +64,50 @@ api.getOpeningAnimationRegistry().register(
         OpeningAnimationRegistration.create(
                 this,
                 "my-addon-animation",
-                "My Addon Animation",
+                "Моя анимация аддона",
                 1,
                 context -> new MyOpeningAnimation(context)
         )
 );
 ```
 
-## Publishing
+## Публикация
 
-For local development:
+Для локальной разработки:
 
 ```powershell
 mvn -q -DskipTests install
 ```
 
-This installs `net.recases:recases-api` into your local Maven cache.
+Эта команда установит `net.recases:recases-api` в локальный Maven-кеш.
 
-For public consumption through JitPack:
+Для публичного подключения через JitPack:
 
-1. Push the repository to GitHub.
-2. Create a release tag such as `1.0.0`.
-3. Let JitPack build that tag.
-4. Use the JitPack coordinates shown above.
+1. Запушьте репозиторий на GitHub.
+2. Создайте тег релиза, например `1.0.0`.
+3. Дождитесь, пока JitPack соберет этот тег.
+4. Используйте координаты JitPack, указанные выше.
 
-## Registration rules
+## Правила регистрации
 
-- `id` must be unique and is matched case-insensitively.
-- `requiredSelections` controls how many reward selections the animation expects from `OpeningSession`.
-- Built-in animations cannot be overridden or unregistered.
-- Animations registered by an addon are automatically removed when that addon is disabled.
+- `id` должен быть уникальным и сравнивается без учета регистра.
+- `requiredSelections` определяет, сколько выборов награды ожидает анимация из `OpeningSession`.
+- Встроенные анимации нельзя переопределить или удалить.
+- Анимации, зарегистрированные аддоном, автоматически удаляются при его отключении.
 
 ## OpeningAnimationContext
 
-Addon animation factories receive `OpeningAnimationContext` instead of internal plugin classes. The context provides:
+Фабрики анимаций аддонов получают `OpeningAnimationContext` вместо внутренних классов плагина. Контекст предоставляет:
 
-- `getPlayer()` and `getRuntimeLocation()` for building visuals.
-- `getSession()` for reward preview and current selection progress.
-- `registerTargetChest(location)` and `registerTargetEntity(entity)` so your targets work with ReCases selection logic.
-- `abortOpening(refundKey)` and `completeOpening()` for explicit flow control.
-- `removeRuntimeHologram()` if your animation needs to hide the default case hologram.
+- `getPlayer()` и `getRuntimeLocation()` для построения визуала.
+- `getSession()` для просмотра награды и текущего прогресса выбора.
+- `registerTargetChest(location)` и `registerTargetEntity(entity)`, чтобы ваши цели работали с логикой выбора ReCases.
+- `abortOpening(refundKey)` и `completeOpening()` для явного управления процессом.
+- `removeRuntimeHologram()`, если анимации нужно скрыть стандартный голограм кейса.
 
-## Config usage
+## Использование в конфиге
 
-After registration, the new animation id can be used anywhere the plugin already accepts animation ids:
+После регистрации новый `id` анимации можно использовать везде, где плагин уже принимает идентификатор анимации:
 
 - `profiles.<profile>.animation`
 - `cases.instances.<instance>.animation`

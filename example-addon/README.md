@@ -1,31 +1,31 @@
-# ReCases Example Addon
+# Пример аддона ReCases
 
-Example external addon for `ReCases` that registers the custom `crystal-burst` opening animation.
+Это пример внешнего аддона для `ReCases`, который регистрирует пользовательскую анимацию открытия `crystal-burst`.
 
-## What it shows
+## Что показывает пример
 
-- loading `ReCasesApi` from Bukkit `ServicesManager`
-- registering a custom animation through `recases-api`
-- spawning 3 selection chests around the case
-- handing those chests back to `ReCases` through `registerTargetChest(...)`
+- получение `ReCasesApi` через Bukkit `ServicesManager`
+- регистрацию новой анимации через `recases-api`
+- создание 3 сундуков выбора вокруг кейса
+- передачу этих сундуков обратно в `ReCases` через `registerTargetChest(...)`
 
-## Build
+## Сборка
 
-Build the whole reactor from the repository root:
+Собрать весь reactor можно из корня репозитория:
 
 ```powershell
 mvn -q -DskipTests package
 ```
 
-Or build only the example module:
+Или собрать только модуль примера:
 
 ```powershell
 mvn -q -DskipTests -pl example-addon -am package
 ```
 
-## Maven dependency
+## Maven-зависимость
 
-The example uses the public API artifact:
+Пример использует публичный артефакт API:
 
 ```xml
 <dependency>
@@ -36,9 +36,9 @@ The example uses the public API artifact:
 </dependency>
 ```
 
-## Usage
+## Использование
 
-After installing the addon on the server, reference its animation id in the `ReCases` config:
+После установки аддона на сервер укажите его `id` анимации в конфиге `ReCases`:
 
 ```yml
 profiles:

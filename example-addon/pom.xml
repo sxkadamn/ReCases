@@ -14,7 +14,7 @@
     <artifactId>recases-example-addon</artifactId>
     <packaging>jar</packaging>
 
-    <name>ReCases Example Addon</name>
+    <name>Пример аддона ReCases</name>
 
     <properties>
         <recases.api.version>${project.version}</recases.api.version>
