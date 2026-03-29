@@ -51,8 +51,3 @@
 - `recases-plugin` - основной плагин `ReCases`
 - `example-addon` - пример аддона, использующий `recases-api`
 
-## Build
-
-```powershell
-mvn -q -DskipTests package
-```
