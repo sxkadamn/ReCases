@@ -44,7 +44,7 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
         }
 
         runtime.removeHologram();
-        plugin.getWorldService().teleportToOpeningAnchor(player, session.getOpeningAnchor(), runtime.getLocation());
+        runtime.getLocation().getBlock().setType(Material.AIR);
         player.playSound(runtime.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, volume(1.0F), 0.9F);
         startPulse();
 
@@ -108,7 +108,7 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
             return;
         }
 
-        Location start = runtime.getLocation().clone().add(0.5, 1.2, 0.5);
+        Location start = runtime.getLocation().clone().add(0.5, 0.35, 0.5);
         Location end = blockLocation.clone().add(0.9, 0.9, 0.3);
         ArmorStand stand = (ArmorStand) blockLocation.getWorld().spawnEntity(start, EntityType.ARMOR_STAND);
         stand.setInvisible(true);
@@ -122,8 +122,8 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
         stand.setMetadata(SWORDS_DECOR_METADATA, new FixedMetadataValue(plugin, runtime.getId()));
         session.trackEntity(stand);
 
-        blockLocation.getWorld().spawnParticle(Particle.WITCH, start.clone().add(0.0, 1.0, 0.0), 20, 0.0, 0.0, 0.0, 0.01);
-        blockLocation.getWorld().spawnParticle(Particle.REVERSE_PORTAL, start.clone().add(0.0, 1.0, 0.0), 20, 0.0, 0.0, 0.0, 0.08);
+        blockLocation.getWorld().spawnParticle(Particle.WITCH, start.clone().add(0.0, 0.35, 0.0), 20, 0.0, 0.0, 0.0, 0.01);
+        blockLocation.getWorld().spawnParticle(Particle.REVERSE_PORTAL, start.clone().add(0.0, 0.35, 0.0), 20, 0.0, 0.0, 0.0, 0.08);
         blockLocation.getWorld().playSound(start, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, volume(1.0F), 1.0F);
 
         new BukkitRunnable() {
@@ -199,8 +199,8 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
                     cancel();
                     return;
                 }
-                runtime.getLocation().getWorld().spawnParticle(Particle.ENCHANT, runtime.getLocation().clone().add(0.5, 0.8, 0.5), 10, 0.2, 0.18, 0.2, 0.02);
-                runtime.getLocation().getWorld().spawnParticle(Particle.CRIT, runtime.getLocation().clone().add(0.5, 1.0, 0.5), 6, 0.35, 0.12, 0.35, 0.01);
+                runtime.getLocation().getWorld().spawnParticle(Particle.ENCHANT, runtime.getLocation().clone().add(0.5, 0.25, 0.5), 10, 0.2, 0.18, 0.2, 0.02);
+                runtime.getLocation().getWorld().spawnParticle(Particle.CRIT, runtime.getLocation().clone().add(0.5, 0.45, 0.5), 6, 0.35, 0.12, 0.35, 0.01);
             }
         }.runTaskTimer(plugin, 0L, 2L);
     }

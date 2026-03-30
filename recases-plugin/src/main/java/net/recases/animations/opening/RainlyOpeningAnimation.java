@@ -37,19 +37,19 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
         }
 
         runtime.removeHologram();
-        plugin.getWorldService().teleportToOpeningAnchor(player, session.getOpeningAnchor(), runtime.getLocation());
+        runtime.getLocation().getBlock().setType(Material.AIR);
         player.playSound(runtime.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, volume(1.0F), 0.9F);
         startPulse();
 
-        Location spawn = runtime.getLocation().clone().add(0.5, 1.0, 0.5);
+        Location spawn = runtime.getLocation().clone().add(0.5, 0.3, 0.5);
         ArmorStand stand = createStand(spawn, session.getFinalReward().getIcon());
         session.trackEntity(stand);
 
         Location caseBase = runtime.getLocation().clone();
-        Location rain1 = caseBase.clone().add(-1.0D, 3.0D, -1.0D);
-        Location rain2 = caseBase.clone().add(2.0D, 3.0D, -1.0D);
-        Location rain3 = caseBase.clone().add(2.0D, 3.0D, 2.0D);
-        Location rain4 = caseBase.clone().add(-1.0D, 3.0D, 2.0D);
+        Location rain1 = caseBase.clone().add(-1.0D, 2.1D, -1.0D);
+        Location rain2 = caseBase.clone().add(2.0D, 2.1D, -1.0D);
+        Location rain3 = caseBase.clone().add(2.0D, 2.1D, 2.0D);
+        Location rain4 = caseBase.clone().add(-1.0D, 2.1D, 2.0D);
         Location cloud1 = rain1.clone().add(0.0D, 0.5D, 0.0D);
         Location cloud2 = rain2.clone().add(0.0D, 0.5D, 0.0D);
         Location cloud3 = rain3.clone().add(0.0D, 0.5D, 0.0D);
@@ -82,7 +82,7 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
                 if (tick == revealTick()) {
                     stand.getEquipment().setHelmet(session.getFinalReward().getIcon());
                     stand.customName(plugin.getTextFormatter().asComponent(session.getFinalReward().getName()));
-                    runtime.getLocation().getWorld().spawnParticle(Particle.EXPLOSION, runtime.getLocation().clone().add(0.5, 1.0, 0.5), 1, 0.0, 0.0, 0.0, 0.0);
+                    runtime.getLocation().getWorld().spawnParticle(Particle.EXPLOSION, runtime.getLocation().clone().add(0.5, 0.35, 0.5), 1, 0.0, 0.0, 0.0, 0.0);
                     runtime.getLocation().getWorld().playSound(runtime.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, volume(1.0F), 1.0F);
                 }
 
@@ -180,8 +180,8 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
                     cancel();
                     return;
                 }
-                runtime.getLocation().getWorld().spawnParticle(Particle.ENCHANT, runtime.getLocation().clone().add(0.5, 0.8, 0.5), scaled(10), 0.2, 0.18, 0.2, 0.02);
-                runtime.getLocation().getWorld().spawnParticle(Particle.CLOUD, runtime.getLocation().clone().add(0.5, 1.05, 0.5), scaled(6), 0.35, 0.12, 0.35, 0.01);
+                runtime.getLocation().getWorld().spawnParticle(Particle.ENCHANT, runtime.getLocation().clone().add(0.5, 0.3, 0.5), scaled(10), 0.2, 0.18, 0.2, 0.02);
+                runtime.getLocation().getWorld().spawnParticle(Particle.CLOUD, runtime.getLocation().clone().add(0.5, 0.55, 0.5), scaled(6), 0.35, 0.12, 0.35, 0.01);
             }
         }.runTaskTimer(plugin, 0L, 2L);
     }

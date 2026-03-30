@@ -33,7 +33,6 @@ public abstract class AbstractChestOpeningAnimation implements OpeningAnimation 
         }
 
         runtime.removeHologram();
-        plugin.getWorldService().teleportToOpeningAnchor(player, session.getOpeningAnchor(), runtime.getLocation());
         player.playSound(runtime.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, 1.0F, 1.0F);
 
         new BukkitRunnable() {

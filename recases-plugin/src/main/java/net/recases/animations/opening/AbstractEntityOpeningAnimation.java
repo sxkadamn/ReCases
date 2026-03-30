@@ -41,7 +41,6 @@ public abstract class AbstractEntityOpeningAnimation implements OpeningAnimation
 
         runtime.removeHologram();
         runtime.getLocation().getBlock().setType(Material.AIR);
-        plugin.getWorldService().teleportToOpeningAnchor(player, session.getOpeningAnchor(), runtime.getLocation());
         player.playSound(runtime.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, 1.0F, 0.8F);
 
         new BukkitRunnable() {

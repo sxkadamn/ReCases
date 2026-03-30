@@ -10,7 +10,9 @@ import net.recases.animations.opening.AnchorRiseOpeningAnimation;
 import net.recases.animations.opening.CircleOpeningAnimation;
 import net.recases.animations.opening.ClassicOpeningAnimation;
 import net.recases.animations.opening.MeteorDropOpeningAnimation;
+import net.recases.animations.opening.NeuralOpeningAnimation;
 import net.recases.animations.opening.RainlyOpeningAnimation;
+import net.recases.animations.opening.SphereOpeningAnimation;
 import net.recases.animations.opening.SwordsOpeningAnimation;
 import net.recases.animations.opening.VoidRiftOpeningAnimation;
 import net.recases.animations.opening.WheelOpeningAnimation;
@@ -35,6 +37,8 @@ public class AnimationService implements OpeningAnimationRegistry {
     public static final String METEOR_DROP = "meteor-drop";
     public static final String VOID_RIFT = "void-rift";
     public static final String WHEEL = "wheel";
+    public static final String SPHERE = "sphere";
+    public static final String NEURAL = "neural";
     public static final String SWORDS = "swords";
     public static final String ANCHOR_RISE = "anchor-rise";
     public static final String RAINLY = "rainly";
@@ -146,6 +150,8 @@ public class AnimationService implements OpeningAnimationRegistry {
         registerBuiltIn(METEOR_DROP, "Meteor Drop", METEOR_DROP_SELECTIONS, context -> new MeteorDropOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(VOID_RIFT, "Void Rift", VOID_RIFT_SELECTIONS, context -> new VoidRiftOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(WHEEL, "Wheel", 0, context -> new WheelOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
+        registerBuiltIn(SPHERE, "Sphere", 0, context -> new SphereOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
+        registerBuiltIn(NEURAL, "Neural", 0, context -> new NeuralOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(SWORDS, "Swords", SWORDS_SELECTIONS, context -> new SwordsOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(ANCHOR_RISE, "Anchor Rise", 1, context -> new AnchorRiseOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(RAINLY, "Rainly", 1, context -> new RainlyOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));

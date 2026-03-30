@@ -22,6 +22,8 @@ public class ConfigService {
             "meteor-drop",
             "void-rift",
             "wheel",
+            "sphere",
+            "neural",
             "swords",
             "anchor-rise",
             "rainly"
