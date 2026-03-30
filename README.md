@@ -259,14 +259,3 @@ cases:
 - [config.yml](/D:/pluginslie/lieCases/recases-plugin/src/main/resources/config.yml)
 - [SchematicService.java](/D:/pluginslie/lieCases/recases-plugin/src/main/java/net/recases/services/SchematicService.java)
 
-## Коротко
-
-Если делать совсем коротко, то тебе нужно:
-
-1. Подключить `recases-api`.
-2. Добавить `depend: [ReCases]`.
-3. Получить `ReCasesApi` через `ServicesManager`.
-4. Зарегистрировать анимацию через `OpeningAnimationRegistration`.
-5. Внутри анимации зарегистрировать цели выбора.
-
-Этого уже достаточно, чтобы внешний плагин добавил в `ReCases` свою анимацию открытия.
