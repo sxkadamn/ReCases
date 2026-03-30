@@ -1,3 +1,20 @@
+![Desktop 2026 03 30 - 13 02 28 13](https://github.com/user-attachments/assets/00576fff-d5a4-490f-86d7-ee76542b97d8)![Desktop 2026 03 30 - 12 43 25 05 (1)](https://github.com/user-attachments/assets/c9cf3b4f-da80-4cf5-8da4-331130d83ffe)
+
+![Desktop 2026 03 30 - 12 41 23 04 (3)](https://github.com/user-attachments/assets/fd92b19e-cb84-4898-accd-bda503d6564e)
+
+![Desktop 2026 03 30 - 12 58 52 08](https://github.com/user-attachments/assets/83bba87a-167d-4310-97b6-9f1c63119704)
+
+![Desktop 2026 03 30 - 12 59 40 09](https://github.com/user-attachments/assets/29a37c3f-bcb7-4389-bf21-82df8e87152a)
+
+![Desktop 2026 03 30 - 13 00 52 11](https://github.com/user-attachments/assets/1a41ec16-d174-4925-b22b-28ad6d886597)
+
+![Desktop 2026 03 30 - 13 01 54 12](https://github.com/user-attachments/assets/05ec3400-7d61-42ea-9be4-3a67ea565f41)
+
+![Desktop 2026 03 30 - 13 02 28 13](https://github.com/user-attachments/assets/53d49c1b-b38d-493e-a6e5-b5cee2ef229b)
+
+![Desktop 2026 03 30 - 13 03 11 14](https://github.com/user-attachments/assets/23fc2f63-22f6-45e7-bbac-0f430845d955)
+
+
 # ReCases API
 
 `ReCases` позволяет внешним плагинам регистрировать свои анимации открытия кейсов.
