@@ -3,11 +3,18 @@ package net.recases;
 import net.recases.api.ReCasesApi;
 import net.recases.app.PluginContext;
 import net.recases.animations.round.RoundListener;
+import net.recases.animations.opening.AbstractEntityOpeningAnimation;
+import net.recases.animations.opening.AnchorRiseOpeningAnimation;
+import net.recases.animations.opening.RainlyOpeningAnimation;
+import net.recases.animations.opening.SwordsOpeningAnimation;
+import net.recases.animations.opening.WheelOpeningAnimation;
 import net.recases.commands.CaseCommands;
 import net.recases.gui.impl.MenuListener;
 import net.recases.gui.impl.MenuManager;
 import net.recases.listener.CaseListener;
+import net.recases.listener.OpeningGuardListener;
 import net.recases.listener.PluginHooksListener;
+import net.recases.protocollib.hologram.HologramLine;
 import net.recases.placeholders.ReCasesExpansion;
 import net.recases.runtime.cache.KeyCache;
 import net.recases.runtime.registry.EntityRegistry;
@@ -18,13 +25,19 @@ import net.recases.services.ItemFactory;
 import net.recases.services.LeaderboardHologramService;
 import net.recases.services.MessageService;
 import net.recases.services.RewardService;
+import net.recases.services.SchematicService;
 import net.recases.services.StatsService;
 import net.recases.services.StorageService;
 import net.recases.services.TextFormatter;
 import net.recases.services.WorldService;
+import org.bukkit.World;
+import org.bukkit.entity.Entity;
+import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.List;
 
 public final class ReCases extends JavaPlugin implements PluginContext, ReCasesApi {
 
@@ -34,6 +47,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     private TextFormatter textFormatter;
     private ItemFactory itemFactory;
     private WorldService worldService;
+    private SchematicService schematicService;
     private MessageService messageService;
     private ConfigService configService;
     private AnimationService animationService;
@@ -59,6 +73,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         textFormatter = new TextFormatter();
         itemFactory = new ItemFactory();
         worldService = new WorldService(this);
+        schematicService = new SchematicService(this);
         messageService = new MessageService(this, textFormatter);
         configService = new ConfigService(this);
         animationService = new AnimationService(this);
@@ -80,12 +95,15 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         getServer().getServicesManager().unregister(ReCasesApi.class, this);
         leaderboardHologramService.close();
         caseService.clear();
+        schematicService.close();
+        cleanupResidualEntities();
         statsService.close();
         storageService.close();
     }
 
     public void reloadPluginState() {
         configService.reload();
+        schematicService.reload();
         caseService.clear();
         storageService.reload();
         statsService.reload();
@@ -102,6 +120,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     private void registerEvents() {
         PluginManager pluginManager = getServer().getPluginManager();
         pluginManager.registerEvents(new CaseListener(this), this);
+        pluginManager.registerEvents(new OpeningGuardListener(this), this);
         pluginManager.registerEvents(new RoundListener(this, entityRegistry), this);
         pluginManager.registerEvents(new MenuListener(this), this);
         pluginManager.registerEvents(new PluginHooksListener(this, animationService), this);
@@ -131,6 +150,11 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
 
     public WorldService getWorldService() {
         return worldService;
+    }
+
+    @Override
+    public SchematicService getSchematics() {
+        return schematicService;
     }
 
     public MessageService getMessages() {
@@ -190,6 +214,41 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         } catch (NumberFormatException exception) {
             return false;
         }
+    }
+
+    private void cleanupResidualEntities() {
+        for (World world : getServer().getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (shouldRemoveOnDisable(entity)) {
+                    entity.remove();
+                }
+            }
+        }
+    }
+
+    private boolean shouldRemoveOnDisable(Entity entity) {
+        return hasOwnedMetadata(entity, HologramLine.HOLOGRAM_METADATA)
+                || hasOwnedMetadata(entity, LeaderboardHologramService.LEADERBOARD_HOLOGRAM_METADATA)
+                || hasOwnedMetadata(entity, "armor_head")
+                || hasOwnedMetadata(entity, AbstractEntityOpeningAnimation.ENTITY_TARGET_METADATA)
+                || hasOwnedMetadata(entity, WheelOpeningAnimation.WHEEL_ENTITY_METADATA)
+                || hasOwnedMetadata(entity, SwordsOpeningAnimation.SWORDS_DECOR_METADATA)
+                || hasOwnedMetadata(entity, AnchorRiseOpeningAnimation.ANCHOR_RISE_METADATA)
+                || hasOwnedMetadata(entity, RainlyOpeningAnimation.RAINLY_METADATA);
+    }
+
+    private boolean hasOwnedMetadata(Entity entity, String key) {
+        if (!entity.hasMetadata(key)) {
+            return false;
+        }
+
+        List<MetadataValue> metadataValues = entity.getMetadata(key);
+        for (MetadataValue metadataValue : metadataValues) {
+            if (metadataValue.getOwningPlugin() == this) {
+                return true;
+            }
+        }
+        return false;
     }
 }
 

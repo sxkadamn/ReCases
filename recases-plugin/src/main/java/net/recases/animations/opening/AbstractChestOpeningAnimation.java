@@ -33,7 +33,7 @@ public abstract class AbstractChestOpeningAnimation implements OpeningAnimation 
         }
 
         runtime.removeHologram();
-        player.teleport(runtime.getLocation().clone().add(0.5, 0.0, 0.5));
+        plugin.getWorldService().teleportToOpeningAnchor(player, session.getOpeningAnchor(), runtime.getLocation());
         player.playSound(runtime.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, 1.0F, 1.0F);
 
         new BukkitRunnable() {
@@ -103,6 +103,7 @@ public abstract class AbstractChestOpeningAnimation implements OpeningAnimation 
         Block platform = chestLocation.clone().add(0, mainBlock.getY() - 1 - chestLocation.getBlockY(), 0).getBlock();
         platform.setType(platformMaterial);
         platform.setMetadata("case_platform", new FixedMetadataValue(plugin, runtime.getId()));
+        session.getPlatformLocations().add(platform.getLocation());
 
         chest.getWorld().spawnParticle(getChestSpawnParticle(session), chestLocation.toCenterLocation(), 10, 0.25, 0.25, 0.25, 0.01);
         chest.getWorld().playSound(chestLocation, getChestSpawnSound(session), 0.7F, isPremiumReward(session) ? 0.85F : 1.4F);

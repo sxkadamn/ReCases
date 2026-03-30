@@ -124,8 +124,15 @@ public class CasesGUI {
         String animationName = plugin.getAnimations().getDisplayName(animationId);
         int requiredSelections = plugin.getAnimations().getRequiredSelections(animationId);
         OpeningSession session = new OpeningSession(player, profileId, animationId, requiredSelections, reward, guaranteedReward);
+        session.setOpeningAnchor(plugin.getWorldService().createOpeningAnchor(
+                runtime.getLocation(),
+                player.getLocation(),
+                plugin.getConfig().getDouble("settings.opening-guard.owner-anchor-distance", 2.15D)
+        ));
         runtime.setSession(session);
+        plugin.getSchematics().pasteAnimationScene(session, runtime);
         if (!plugin.getAnimations().create(plugin, player, runtime, profile).play()) {
+            plugin.getSchematics().cleanup(runtime);
             runtime.clearSession();
             plugin.getMessages().send(player, "messages.case-unavailable", "#ff6b6bЭта точка кейса сейчас недоступна. Попробуйте позже или перезагрузите плагин.");
             player.closeInventory();

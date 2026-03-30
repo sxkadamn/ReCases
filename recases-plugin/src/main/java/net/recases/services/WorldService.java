@@ -25,6 +25,79 @@ public class WorldService {
         player.setVelocity(knockbackVector);
     }
 
+    public Location createOpeningAnchor(Location caseLocation, Location playerLocation, double distance) {
+        if (caseLocation == null) {
+            return null;
+        }
+        return caseLocation.clone().add(0.5, 0.0, 0.5);
+    }
+
+    public void teleportToOpeningAnchor(Player player, Location openingAnchor, Location caseLocation) {
+        if (player == null) {
+            return;
+        }
+
+        Location target = caseLocation == null ? null : caseLocation.clone().add(0.5, 0.0, 0.5);
+        if (target == null) {
+            return;
+        }
+
+        if (caseLocation != null) {
+            aimAt(target, caseLocation.clone().add(0.5, 0.5, 0.5));
+        }
+        player.teleport(target);
+    }
+
+    public void pullToward(Player player, Location target, double horizontalStrength, double verticalStrength) {
+        if (player == null || target == null || target.getWorld() == null) {
+            return;
+        }
+
+        if (player.getWorld() != target.getWorld()) {
+            player.teleport(target.clone().add(0.5, 0.0, 0.5));
+            return;
+        }
+
+        Location playerLocation = player.getLocation();
+        Vector targetVector = target.toVector().add(new Vector(0.5, playerLocation.getY() - target.getY(), 0.5));
+        Vector pullVector = targetVector.subtract(playerLocation.toVector());
+        pullVector.setY(0.0D);
+        if (pullVector.lengthSquared() < 0.0001D) {
+            return;
+        }
+
+        pullVector.normalize().multiply(horizontalStrength);
+        pullVector.setY(verticalStrength);
+        player.setVelocity(pullVector);
+    }
+
+    public void pushAway(Player player, Location source, double horizontalStrength, double verticalStrength) {
+        if (player == null || source == null || source.getWorld() == null || player.getWorld() != source.getWorld()) {
+            return;
+        }
+
+        Location playerLocation = player.getLocation();
+        Vector pushVector = playerLocation.toVector().subtract(source.toVector().add(new Vector(0.5, 0.0, 0.5)));
+        if (pushVector.lengthSquared() < 0.0001D) {
+            pushVector = player.getLocation().getDirection().multiply(-1);
+        }
+        if (pushVector.lengthSquared() < 0.0001D) {
+            pushVector = new Vector(1, 0, 0);
+        }
+
+        pushVector.normalize().multiply(horizontalStrength);
+        pushVector.setY(verticalStrength);
+        player.setVelocity(pushVector);
+    }
+
+    private void aimAt(Location source, Location target) {
+        Vector direction = target.toVector().subtract(source.toVector());
+        if (direction.lengthSquared() < 0.0001D) {
+            return;
+        }
+        source.setDirection(direction);
+    }
+
     public void removePlatform(Location baseLocation) {
         for (int x = -2; x <= 2; x++) {
             for (int z = -2; z <= 2; z++) {
