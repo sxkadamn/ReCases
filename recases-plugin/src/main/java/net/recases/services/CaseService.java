@@ -52,6 +52,7 @@ public class CaseService {
     public void clear() {
         runtimes.values().forEach(runtime -> {
             refundPendingKey(runtime.getSession());
+            plugin.getSchematics().cleanup(runtime);
             runtime.remove();
         });
         runtimes.clear();
@@ -115,6 +116,7 @@ public class CaseService {
             refundPendingKey(session);
         }
 
+        plugin.getSchematics().cleanup(runtime);
         runtime.resetOpeningState();
         if (runtime.getLocation().getWorld() != null) {
             runtime.getLocation().getWorld().playSound(runtime.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0F, 1.0F);

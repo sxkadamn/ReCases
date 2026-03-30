@@ -305,7 +305,29 @@ public class RoundListener implements Listener {
                     cancel();
                     return;
                 }
-                world.spawnParticle(isPremium(session) ? Particle.LAVA : Particle.BLOCK, center.clone().add(0.0, 0.35 + (tick * 0.08), 0.0), scaled(18), 0.3, 0.25, 0.3, isPremium(session) ? 0.02 : 0.0, Material.CRACKED_STONE_BRICKS.createBlockData());
+                Particle particle = isPremium(session) ? Particle.LAVA : Particle.BLOCK;
+                if (particle == Particle.BLOCK) {
+                    world.spawnParticle(
+                            particle,
+                            center.clone().add(0.0, 0.35 + (tick * 0.08), 0.0),
+                            scaled(18),
+                            0.3,
+                            0.25,
+                            0.3,
+                            0.0,
+                            Material.CRACKED_STONE_BRICKS.createBlockData()
+                    );
+                } else {
+                    world.spawnParticle(
+                            particle,
+                            center.clone().add(0.0, 0.35 + (tick * 0.08), 0.0),
+                            scaled(18),
+                            0.3,
+                            0.25,
+                            0.3,
+                            0.02
+                    );
+                }
                 world.playSound(center, isPremium(session) ? Sound.ITEM_TRIDENT_HIT_GROUND : Sound.BLOCK_ANVIL_DESTROY, volume(0.45F), 0.85F + (tick * 0.04F));
             }
         }.runTaskTimer(plugin, 0L, 3L);

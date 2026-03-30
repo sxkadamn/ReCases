@@ -11,6 +11,7 @@ import net.recases.services.StatsService;
 import net.recases.services.StorageService;
 import net.recases.services.TextFormatter;
 import net.recases.services.WorldService;
+import net.recases.services.SchematicService;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.Plugin;
 
@@ -23,6 +24,8 @@ public interface PluginContext extends Plugin {
     ItemFactory getItemFactory();
 
     WorldService getWorldService();
+
+    SchematicService getSchematics();
 
     MessageService getMessages();
 

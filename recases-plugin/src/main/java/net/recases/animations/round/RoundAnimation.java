@@ -39,7 +39,7 @@ public class RoundAnimation implements Animation {
         }
 
         runtime.removeHologram();
-        player.teleport(runtime.getLocation().clone().add(0.5, 0.0, 0.5));
+        plugin.getWorldService().teleportToOpeningAnchor(player, session.getOpeningAnchor(), runtime.getLocation());
         player.playSound(runtime.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, 1.0F, 1.0F);
 
         new BukkitRunnable() {
@@ -66,6 +66,7 @@ public class RoundAnimation implements Animation {
             Block platform = chestLocation.clone().add(0, platformY - chestLocation.getBlockY(), 0).getBlock();
             platform.setType(Material.STONE);
             platform.setMetadata("case_platform", new FixedMetadataValue(plugin, runtime.getId()));
+            session.getPlatformLocations().add(platform.getLocation());
         }
     }
 }

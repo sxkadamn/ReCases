@@ -1,8 +1,40 @@
 # Версия структуры конфига
 # Нужна плагину для автоматической миграции старых конфигов после обновления
-config-version: 4
+config-version: 5
 
 settings:
+  schematics:
+    # Общий переключатель сцен из .schem/.schematic файлов для анимаций
+    enabled: false
+    # Папка внутри plugins/ReCases, откуда загружаются файлы схем
+    folder: schematics
+    animations:
+      classic:
+        enabled: false
+        file: classic-stage.schem
+        offset:
+          x: -2
+          y: -1
+          z: -2
+        # Если true, воздух из схемы не будет затирать существующий мир
+        ignore-air: false
+  opening-guard:
+    # На каком расстоянии от кейса ставить игрока в точку открытия
+    owner-anchor-distance: 2.15
+    # Насколько далеко владелец открытия может отойти от кейса
+    owner-max-distance: 6.0
+    # На этой дистанции игрок уже не просто тянется, а мягко возвращается ближе к кейсу
+    owner-snap-distance: 5.0
+    # Если игрок улетел слишком далеко или оказался вне мира кейса, его вернет к кейсу
+    owner-hard-teleport-distance: 12.0
+    # Сила возврата владельца к кейсу
+    owner-pull-strength: 1.6
+    owner-pull-vertical: 0.45
+    # Радиус, в котором других игроков будет отталкивать от активного кейса
+    other-player-radius: 3.5
+    # Сила отбрасывания других игроков
+    other-player-push-strength: 1.4
+    other-player-push-vertical: 0.35
   animations:
     # Глобальные множители интенсивности анимации
     intensity:

@@ -136,6 +136,9 @@ public class CaseRuntime {
         for (Location chestLocation : session.getChestLocations()) {
             chestLocation.getBlock().setType(Material.AIR);
         }
+        for (Location platformLocation : session.getPlatformLocations()) {
+            platformLocation.getBlock().setType(Material.AIR);
+        }
         session.clearTrackedEntities();
     }
 }

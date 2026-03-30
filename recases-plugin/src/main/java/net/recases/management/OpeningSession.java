@@ -20,8 +20,10 @@ public class OpeningSession {
     private final CaseItem finalReward;
     private final boolean guaranteedReward;
     private final Set<Location> chestLocations = new LinkedHashSet<>();
+    private final Set<Location> platformLocations = new LinkedHashSet<>();
     private final Set<UUID> targetEntityIds = new LinkedHashSet<>();
     private final Set<String> openedTargets = new LinkedHashSet<>();
+    private Location openingAnchor;
     private boolean keyConsumed;
     private boolean rewardGranted;
 
@@ -67,8 +69,20 @@ public class OpeningSession {
         return chestLocations;
     }
 
+    public Set<Location> getPlatformLocations() {
+        return platformLocations;
+    }
+
     public Set<UUID> getTargetEntityIds() {
         return targetEntityIds;
+    }
+
+    public Location getOpeningAnchor() {
+        return openingAnchor == null ? null : openingAnchor.clone();
+    }
+
+    public void setOpeningAnchor(Location openingAnchor) {
+        this.openingAnchor = openingAnchor == null ? null : openingAnchor.clone();
     }
 
     public boolean isParticipant(Player player) {

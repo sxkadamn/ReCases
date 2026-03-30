@@ -49,7 +49,7 @@ public class AnchorRiseOpeningAnimation implements OpeningAnimation {
         }
 
         runtime.removeHologram();
-        player.teleport(runtime.getLocation().clone().add(0.5, 0.0, 0.5));
+        plugin.getWorldService().teleportToOpeningAnchor(player, session.getOpeningAnchor(), runtime.getLocation());
         player.playSound(runtime.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, volume(1.0F), 0.82F);
         startPulse();
 

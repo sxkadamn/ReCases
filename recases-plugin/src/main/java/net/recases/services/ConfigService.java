@@ -15,7 +15,7 @@ import java.util.Set;
 
 public class ConfigService {
 
-    private static final int CURRENT_VERSION = 4;
+    private static final int CURRENT_VERSION = 5;
     private static final Set<String> KNOWN_ANIMATIONS = Set.of(
             "classic",
             "circle",
@@ -63,6 +63,17 @@ public class ConfigService {
                     plugin.getConfig().set("profiles." + profileId + ".rewards", rewards.getConfigurationSection(profileId + ".items"));
                 }
             }
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.schematics") == null) {
+            plugin.getConfig().set("settings.schematics.enabled", false);
+            plugin.getConfig().set("settings.schematics.folder", "schematics");
+            plugin.getConfig().set("settings.schematics.animations.classic.enabled", false);
+            plugin.getConfig().set("settings.schematics.animations.classic.file", "classic-stage.schem");
+            plugin.getConfig().set("settings.schematics.animations.classic.offset.x", -2);
+            plugin.getConfig().set("settings.schematics.animations.classic.offset.y", -1);
+            plugin.getConfig().set("settings.schematics.animations.classic.offset.z", -2);
+            plugin.getConfig().set("settings.schematics.animations.classic.ignore-air", false);
         }
 
         migrateRewardActions();
@@ -226,6 +237,21 @@ public class ConfigService {
         }
         if (bobStrength < 0.0D) {
             warnings.add("settings.animations.winner-item.bob-strength cannot be negative.");
+        }
+
+        ConfigurationSection schematicAnimations = plugin.getConfig().getConfigurationSection("settings.schematics.animations");
+        if (schematicAnimations != null) {
+            for (String animationId : schematicAnimations.getKeys(false)) {
+                ConfigurationSection scene = schematicAnimations.getConfigurationSection(animationId);
+                if (scene == null || !scene.getBoolean("enabled", false)) {
+                    continue;
+                }
+
+                String file = scene.getString("file", "").trim();
+                if (file.isEmpty()) {
+                    warnings.add("Schematic scene '" + animationId + "' is enabled but file is empty.");
+                }
+            }
         }
     }
 
