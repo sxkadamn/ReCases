@@ -130,10 +130,12 @@ public class CasesGUI {
                 plugin.getConfig().getDouble("settings.opening-guard.owner-anchor-distance", 2.15D)
         ));
         runtime.setSession(session);
+        runtime.removeHologram();
         plugin.getSchematics().pasteAnimationScene(session, runtime);
         if (!plugin.getAnimations().create(plugin, player, runtime, profile).play()) {
             plugin.getSchematics().cleanup(runtime);
             runtime.clearSession();
+            runtime.spawnHologram();
             plugin.getMessages().send(player, "messages.case-unavailable", "#ff6b6bЭта точка кейса сейчас недоступна. Попробуйте позже или перезагрузите плагин.");
             player.closeInventory();
             return;

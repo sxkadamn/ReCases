@@ -162,7 +162,7 @@ public class RoundListener implements Listener {
         stand.setHelmet(reward.getIcon());
         entityRegistry.addArmorStand(stand);
 
-        Hologram hologram = new Hologram(plugin, reward.getName(), center.clone().add(0.0, 1.8, 0.0));
+        Hologram hologram = new Hologram(plugin, plugin.getTextFormatter().colorize(reward.getName()), center.clone().add(0.0, 1.8, 0.0));
         hologram.spawn();
         entityRegistry.addHologram(hologram);
 

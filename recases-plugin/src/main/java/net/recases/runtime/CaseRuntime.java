@@ -3,12 +3,15 @@ package net.recases.runtime;
 import net.recases.domain.CaseInstance;
 import net.recases.management.OpeningSession;
 import net.recases.protocollib.hologram.Hologram;
+import net.recases.protocollib.hologram.HologramLine;
 import net.recases.services.TextFormatter;
 import net.recases.services.WorldService;
 import net.recases.runtime.registry.EntityRegistry;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -75,11 +78,13 @@ public class CaseRuntime {
 
     public void removeHologram() {
         if (hologram == null) {
+            cleanupNearbyHologramLines();
             return;
         }
         hologram.remove();
         entityRegistry.removeHologram(hologram);
         hologram = null;
+        cleanupNearbyHologramLines();
     }
 
     public String getId() {
@@ -140,6 +145,20 @@ public class CaseRuntime {
             platformLocation.getBlock().setType(Material.AIR);
         }
         session.clearTrackedEntities();
+    }
+
+    private void cleanupNearbyHologramLines() {
+        Location base = getLocation();
+        if (base.getWorld() == null) {
+            return;
+        }
+
+        for (Entity entity : base.getWorld().getNearbyEntities(base.clone().add(0.5, 2.5, 0.5), 1.25, 2.5, 1.25)) {
+            if (!(entity instanceof ArmorStand) || !entity.hasMetadata(HologramLine.HOLOGRAM_METADATA)) {
+                continue;
+            }
+            entity.remove();
+        }
     }
 }
 

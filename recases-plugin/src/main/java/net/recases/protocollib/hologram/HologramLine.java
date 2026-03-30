@@ -8,9 +8,13 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.plugin.Plugin;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 public class HologramLine {
 
     public static final String HOLOGRAM_METADATA = "recases_hologram_line";
+    private static final Pattern HEX_PATTERN = Pattern.compile("#[a-fA-F0-9]{6}");
     private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.builder()
             .character('&')
             .hexColors()
@@ -84,7 +88,30 @@ public class HologramLine {
     }
 
     private Component colorize(String line) {
-        return LEGACY_SERIALIZER.deserialize(line == null ? "" : line);
+        return LEGACY_SERIALIZER.deserialize(normalize(line));
+    }
+
+    private String normalize(String line) {
+        if (line == null) {
+            return "";
+        }
+
+        Matcher matcher = HEX_PATTERN.matcher(line);
+        StringBuffer buffer = new StringBuffer();
+        while (matcher.find()) {
+            matcher.appendReplacement(buffer, Matcher.quoteReplacement(toLegacyHex(matcher.group())));
+        }
+        matcher.appendTail(buffer);
+        return buffer.toString().replace('§', '&');
+    }
+
+    private String toLegacyHex(String hexCode) {
+        StringBuilder builder = new StringBuilder(14);
+        builder.append('&').append('x');
+        for (int i = 1; i < hexCode.length(); i++) {
+            builder.append('&').append(hexCode.charAt(i));
+        }
+        return builder.toString();
     }
 }
 
