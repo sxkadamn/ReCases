@@ -1,12 +1,23 @@
-# ReCases
+# ReCases Addon API
 
-`ReCases` разделен на Maven-модули, чтобы публичный API для аддонов можно было подключать отдельно от основного jar-файла плагина.
+`ReCases` предоставляет Bukkit-сервис для регистрации пользовательских анимаций открытия из других плагинов.
 
-## JitPack
+## Maven-зависимость
 
-После публикации репозитория на GitHub и создания тега релиза JitPack сможет собрать проект напрямую.
+Публичный API вынесен в отдельный артефакт.
 
-Добавьте репозиторий:
+Для локальной сборки внутри multi-module проекта:
+
+```xml
+<dependency>
+    <groupId>net.recases</groupId>
+    <artifactId>recases-api</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <scope>provided</scope>
+</dependency>
+```
+
+Для подключения через JitPack из GitHub:
 
 ```xml
 <repositories>
@@ -17,36 +28,71 @@
 </repositories>
 ```
 
-Для этого multi-module репозитория JitPack использует:
-
-- `groupId`: `com.github.<GitHubUser>.<RepoName>`
-- `artifactId`: идентификатор Maven-модуля
-- `version`: git-тег, релиз или commit hash
-
-Тогда зависимость на API для аддона будет выглядеть так:
-
 ```xml
 <dependency>
-    <groupId>com.github.<GitHubUser>.<RepoName></groupId>
+    <groupId>com.github.YOUR_GITHUB_USER.YOUR_REPOSITORY</groupId>
     <artifactId>recases-api</artifactId>
-    <version>1.0.0</version>
+    <version>YOUR_TAG</version>
     <scope>provided</scope>
 </dependency>
 ```
 
-Если ваш репозиторий называется `sxkadamn/ReCases`, зависимость будет такой:
+## Как получить API
 
-```xml
-<dependency>
-    <groupId>com.github.sxkadamn.ReCases</groupId>
-    <artifactId>recases-api</artifactId>
-    <version>1.0.0</version>
-    <scope>provided</scope>
-</dependency>
+В `plugin.yml` аддона должна быть зависимость от `ReCases`:
+
+```yml
+depend:
+  - ReCases
 ```
 
-## Модули
+После этого получите API через Bukkit `ServicesManager`:
 
-- `recases-api` - публичный API для разработчиков аддонов
-- `recases-plugin` - основной плагин `ReCases`
-- `example-addon` - пример внешнего аддона с использованием `recases-api`
+```
+import net.recases.api.ReCasesApi;
+import net.recases.api.animation.OpeningAnimationContext;
+import net.recases.api.animation.OpeningAnimationRegistration;
+
+ReCasesApi api = getServer().getServicesManager().load(ReCasesApi.class);
+if (api == null) {
+    getLogger().severe("API ReCases недоступно.");
+    getServer().getPluginManager().disablePlugin(this);
+    return;
+}
+
+api.getOpeningAnimationRegistry().register(
+        OpeningAnimationRegistration.create(
+                this,
+                "my-addon-animation",
+                "Моя анимация аддона",
+                1,
+                context -> new MyOpeningAnimation(this, context)
+        )
+);
+
+```
+
+## Правила регистрации
+
+- `id` должен быть уникальным и сравнивается без учета регистра.
+- `requiredSelections` определяет, сколько выборов награды ожидает анимация из `OpeningSession`.
+- Встроенные анимации нельзя переопределить или удалить.
+- Анимации, зарегистрированные аддоном, автоматически удаляются при его отключении.
+
+## OpeningAnimationContext
+
+Фабрики анимаций аддонов получают `OpeningAnimationContext` вместо внутренних классов плагина. Контекст предоставляет:
+
+- `getPlayer()` и `getRuntimeLocation()` для построения визуала.
+- `getSession()` для просмотра награды и текущего прогресса выбора.
+- `registerTargetChest(location)` и `registerTargetEntity(entity)`, чтобы ваши цели работали с логикой выбора ReCases.
+- `abortOpening(refundKey)` и `completeOpening()` для явного управления процессом.
+- `removeRuntimeHologram()`, если анимации нужно скрыть стандартный голограм кейса.
+- Для `BukkitRunnable` и scheduler используйте экземпляр собственного плагина аддона, а не API-объект.
+
+## Использование в конфиге
+
+После регистрации новый `id` анимации можно использовать везде, где плагин уже принимает идентификатор анимации:
+
+- `profiles.<profile>.animation`
+- `cases.instances.<instance>.animation`
