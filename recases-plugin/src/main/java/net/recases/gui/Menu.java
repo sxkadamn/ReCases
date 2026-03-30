@@ -1,5 +1,6 @@
 package net.recases.gui;
 
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
@@ -11,14 +12,14 @@ import java.util.Map;
 public class Menu {
 
     private final String id;
-    private final String title;
+    private final Component title;
     private final Inventory inventory;
     private final Map<Integer, MenuSlot> slots = new HashMap<>();
     private boolean cancelTopInventoryClicks = true;
     private boolean cancelBottomInventoryClicks = true;
     private CloseListener closeListener;
 
-    public Menu(String id, String title, int rows) {
+    public Menu(String id, Component title, int rows) {
         this.id = id;
         this.title = title;
         int normalizedRows = Math.max(1, Math.min(6, rows));
@@ -29,7 +30,7 @@ public class Menu {
         return id;
     }
 
-    public String getTitle() {
+    public Component getTitle() {
         return title;
     }
 

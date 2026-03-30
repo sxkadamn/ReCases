@@ -1,6 +1,7 @@
 package net.recases.commands;
 
 import net.recases.app.PluginContext;
+import net.recases.gui.create.CaseEditorGUI;
 import net.recases.runtime.CaseRuntime;
 import net.recases.services.MessageService;
 import net.recases.stats.LeaderboardEntry;
@@ -15,6 +16,7 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -24,16 +26,19 @@ import java.util.stream.Collectors;
 public class CaseCommands implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
-            "help", "list", "instances", "keys", "give", "take", "setamount", "set", "reload", "top"
+            "help", "list", "instances", "keys", "give", "take", "setamount", "set", "reload", "top",
+            "createprofile", "deleteprofile", "createinstance", "deleteinstance", "setprofileanimation", "setinstanceanimation", "edit"
     );
     private static final List<String> TOP_TYPES = Arrays.asList("opens", "rare", "guaranteed");
 
     private final PluginContext plugin;
     private final MessageService messages;
+    private final CaseEditorGUI editorGUI;
 
     public CaseCommands(PluginContext plugin) {
         this.plugin = plugin;
         this.messages = plugin.getMessages();
+        this.editorGUI = new CaseEditorGUI(plugin);
     }
 
     @Override
@@ -46,6 +51,7 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         if (args.length == 0 || "help".equalsIgnoreCase(args[0])) {
             messages.sendList(sender, "messages.help", Collections.emptyList(), "%label%", label);
             messages.send(sender, "messages.help-top", "#ffd166/%label% top <opens|rare|guaranteed> [profile] [limit] #a8dadc- показать таблицы лидеров", "%label%", label);
+            messages.send(sender, "messages.help-editor", "#ffd166/%label% edit <profile> #a8dadc- открыть редактор наград", "%label%", label);
             return true;
         }
 
@@ -68,10 +74,24 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 return saveInstanceLocation(sender, args);
             case "reload":
                 plugin.reloadPluginState();
-                messages.send(sender, "messages.reload-complete", "Конфигурация и рантайм перезагружены.");
+                messages.send(sender, "messages.reload-complete", "Конфиг и runtime кейсов перезагружены.");
                 return true;
             case "top":
                 return showTop(sender, args);
+            case "createprofile":
+                return createProfile(sender, args);
+            case "deleteprofile":
+                return deleteProfile(sender, args);
+            case "createinstance":
+                return createInstance(sender, args);
+            case "deleteinstance":
+                return deleteInstance(sender, args);
+            case "setprofileanimation":
+                return setProfileAnimation(sender, args);
+            case "setinstanceanimation":
+                return setInstanceAnimation(sender, args);
+            case "edit":
+                return openEditor(sender, args);
             default:
                 messages.send(sender, "messages.command-unknown", "Неизвестная подкоманда.");
                 return true;
@@ -85,25 +105,17 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
             return;
         }
 
-        messages.send(sender,
-                "messages.case-list-format",
-                "Профили кейсов: %cases%",
-                "%cases%", String.join(", ", profiles)
-        );
+        messages.send(sender, "messages.case-list-format", "Профили кейсов: %cases%", "%cases%", String.join(", ", profiles));
     }
 
     private void showInstances(CommandSender sender) {
         List<String> instances = plugin.getCaseService().getRuntimeIds();
         if (instances.isEmpty()) {
-            messages.send(sender, "messages.instance-list-empty", "Физические экземпляры кейсов не настроены.");
+            messages.send(sender, "messages.instance-list-empty", "Физические кейсы не настроены.");
             return;
         }
 
-        messages.send(sender,
-                "messages.instance-list-format",
-                "Экземпляры кейсов: %instances%",
-                "%instances%", String.join(", ", instances)
-        );
+        messages.send(sender, "messages.instance-list-format", "Физические кейсы: %instances%", "%instances%", String.join(", ", instances));
     }
 
     private boolean showBalance(CommandSender sender, String[] args) {
@@ -175,20 +187,8 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         }
 
         int applied = mode == ChangeMode.TAKE ? Math.min(amount, before) : amount;
-        messages.send(sender,
-                mode.messagePath,
-                mode.messageFallback,
-                "%player%", playerName(target),
-                "%amount%", String.valueOf(applied),
-                "%case%", profileId
-        );
-        messages.send(sender,
-                "messages.case-balance-after",
-                "Текущий баланс %player%: %amount% ключ(ей) для %case%.",
-                "%player%", playerName(target),
-                "%amount%", String.valueOf(plugin.getStorage().getCaseAmount(target, profileId)),
-                "%case%", profileId
-        );
+        messages.send(sender, mode.messagePath, mode.messageFallback, "%player%", playerName(target), "%amount%", String.valueOf(applied), "%case%", profileId);
+        messages.send(sender, "messages.case-balance-after", "Текущий баланс %player%: %amount% ключ(ей) для %case%.", "%player%", playerName(target), "%amount%", String.valueOf(plugin.getStorage().getCaseAmount(target, profileId)), "%case%", profileId);
         return true;
     }
 
@@ -197,7 +197,6 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
             messages.send(sender, "messages.player-only", "Эта команда доступна только игрокам.");
             return true;
         }
-
         if (args.length < 2) {
             messages.send(sender, "messages.usage-set", "/cases set <instance>");
             return true;
@@ -219,11 +218,7 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         plugin.getConfig().set(basePath + ".z", location.getZ());
         plugin.saveConfig();
         plugin.reloadPluginState();
-        messages.send(sender,
-                "messages.case-position-saved",
-                "Позиция экземпляра кейса %instance% обновлена.",
-                "%instance%", instanceId
-        );
+        messages.send(sender, "messages.case-position-saved", "Позиция экземпляра кейса %instance% обновлена.", "%instance%", instanceId);
         return true;
     }
 
@@ -241,7 +236,6 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
 
         String profileId = null;
         int limit = 10;
-
         if (args.length >= 3) {
             if (isInteger(args[2])) {
                 limit = parsePositiveInt(args[2], 10);
@@ -253,7 +247,6 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 }
             }
         }
-
         if (args.length >= 4) {
             limit = parsePositiveInt(args[3], 10);
         }
@@ -264,23 +257,114 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        messages.send(sender,
-                "messages.top-header",
-                "#ffd166Топ %type% %scope%",
-                "%type%", type.getId(),
-                "%scope%", profileId == null ? "(глобально)" : "(" + profileId + ")"
-        );
-
+        messages.send(sender, "messages.top-header", "#ffd166Топ %type% %scope%", "%type%", type.getId(), "%scope%", profileId == null ? "(глобально)" : "(" + profileId + ")");
         int position = 1;
         for (LeaderboardEntry entry : entries) {
-            messages.send(sender,
-                    "messages.top-line",
-                    "#a8dadc#%position% #ffffff%player% #ffd166- %value%",
-                    "%position%", String.valueOf(position++),
-                    "%player%", entry.getPlayerName(),
-                    "%value%", String.valueOf(entry.getValue())
-            );
+            messages.send(sender, "messages.top-line", "#a8dadc#%position% #ffffff%player% #ffd166- %value%", "%position%", String.valueOf(position++), "%player%", entry.getPlayerName(), "%value%", String.valueOf(entry.getValue()));
         }
+        return true;
+    }
+
+    private boolean createProfile(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            messages.send(sender, "messages.command-unknown", "Использование: /cases createprofile <id>");
+            return true;
+        }
+        String profileId = args[1].toLowerCase(Locale.ROOT);
+        if (!plugin.getCaseService().createProfile(profileId)) {
+            messages.send(sender, "messages.command-unknown", "Не удалось создать профиль. Возможно, он уже существует.");
+            return true;
+        }
+        messages.send(sender, "messages.editor-profile-created", "#80ed99Профиль кейса #ffffff%profile% #80ed99создан.", "%profile%", profileId);
+        return true;
+    }
+
+    private boolean deleteProfile(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            messages.send(sender, "messages.command-unknown", "Использование: /cases deleteprofile <id>");
+            return true;
+        }
+        String profileId = args[1].toLowerCase(Locale.ROOT);
+        if (!plugin.getCaseService().deleteProfile(profileId)) {
+            messages.send(sender, "messages.case-not-found", "Профиль кейса '%case%' не найден.", "%case%", profileId);
+            return true;
+        }
+        messages.send(sender, "messages.editor-profile-deleted", "#ffd166Профиль кейса #ffffff%profile% #ffd166удален.", "%profile%", profileId);
+        return true;
+    }
+
+    private boolean createInstance(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            messages.send(sender, "messages.player-only", "Эта команда доступна только игрокам.");
+            return true;
+        }
+        if (args.length < 2) {
+            messages.send(sender, "messages.command-unknown", "Использование: /cases createinstance <id>");
+            return true;
+        }
+        String instanceId = args[1].toLowerCase(Locale.ROOT);
+        if (!plugin.getCaseService().createInstance(instanceId, player.getLocation().getBlock().getLocation())) {
+            messages.send(sender, "messages.command-unknown", "Не удалось создать инстанс. Возможно, он уже существует.");
+            return true;
+        }
+        messages.send(sender, "messages.editor-instance-created", "#80ed99Инстанс кейса #ffffff%instance% #80ed99создан.", "%instance%", instanceId);
+        return true;
+    }
+
+    private boolean deleteInstance(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            messages.send(sender, "messages.command-unknown", "Использование: /cases deleteinstance <id>");
+            return true;
+        }
+        String instanceId = args[1].toLowerCase(Locale.ROOT);
+        if (!plugin.getCaseService().deleteInstance(instanceId)) {
+            messages.send(sender, "messages.instance-not-found", "Физический кейс '%instance%' не найден.", "%instance%", instanceId);
+            return true;
+        }
+        messages.send(sender, "messages.editor-instance-deleted", "#ffd166Инстанс кейса #ffffff%instance% #ffd166удален.", "%instance%", instanceId);
+        return true;
+    }
+
+    private boolean setProfileAnimation(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            messages.send(sender, "messages.command-unknown", "Использование: /cases setprofileanimation <profile> <animation>");
+            return true;
+        }
+        String profileId = args[1].toLowerCase(Locale.ROOT);
+        String animationId = args[2].toLowerCase(Locale.ROOT);
+        if (!plugin.getCaseService().setProfileAnimation(profileId, animationId)) {
+            messages.send(sender, "messages.command-unknown", "Не удалось установить анимацию для профиля.");
+            return true;
+        }
+        messages.send(sender, "messages.editor-animation-set", "#80ed99Анимация #ffffff%animation% #80ed99установлена для #ffffff%target%#80ed99.", "%animation%", animationId, "%target%", profileId);
+        return true;
+    }
+
+    private boolean setInstanceAnimation(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            messages.send(sender, "messages.command-unknown", "Использование: /cases setinstanceanimation <instance> <animation|clear>");
+            return true;
+        }
+        String instanceId = args[1].toLowerCase(Locale.ROOT);
+        String animationId = "clear".equalsIgnoreCase(args[2]) ? "" : args[2].toLowerCase(Locale.ROOT);
+        if (!plugin.getCaseService().setInstanceAnimation(instanceId, animationId)) {
+            messages.send(sender, "messages.command-unknown", "Не удалось установить анимацию для инстанса.");
+            return true;
+        }
+        messages.send(sender, "messages.editor-animation-set", "#80ed99Анимация #ffffff%animation% #80ed99установлена для #ffffff%target%#80ed99.", "%animation%", animationId.isEmpty() ? "profile-default" : animationId, "%target%", instanceId);
+        return true;
+    }
+
+    private boolean openEditor(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            messages.send(sender, "messages.player-only", "Эта команда доступна только игрокам.");
+            return true;
+        }
+        if (args.length < 2) {
+            messages.send(sender, "messages.command-unknown", "Использование: /cases edit <profile>");
+            return true;
+        }
+        editorGUI.open(player, args[1].toLowerCase(Locale.ROOT));
         return true;
     }
 
@@ -298,13 +382,25 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         if ("set".equals(subcommand) && args.length == 2) {
             return complete(plugin.getCaseService().getRuntimeIds(), args[1]);
         }
-
+        if (Arrays.asList("deleteprofile", "edit", "setprofileanimation").contains(subcommand) && args.length == 2) {
+            return complete(plugin.getCaseService().getProfileIds(), args[1]);
+        }
+        if (Arrays.asList("deleteinstance", "setinstanceanimation").contains(subcommand) && args.length == 2) {
+            return complete(plugin.getCaseService().getRuntimeIds(), args[1]);
+        }
+        if (Arrays.asList("setprofileanimation", "setinstanceanimation").contains(subcommand) && args.length == 3) {
+            List<String> values = new ArrayList<>(plugin.getAnimations().getRegisteredIds());
+            if ("setinstanceanimation".equals(subcommand)) {
+                values.add("clear");
+            }
+            return complete(values, args[2]);
+        }
         if ("top".equals(subcommand)) {
             if (args.length == 2) {
                 return complete(TOP_TYPES, args[1]);
             }
             if (args.length == 3) {
-                List<String> values = plugin.getCaseService().getProfileIds();
+                List<String> values = new ArrayList<>(plugin.getCaseService().getProfileIds());
                 values.addAll(Arrays.asList("5", "10", "15"));
                 return complete(values, args[2]);
             }
@@ -312,8 +408,7 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 return complete(Arrays.asList("5", "10", "15", "20"), args[3]);
             }
         }
-
-        if ("keys".equals(subcommand) || "give".equals(subcommand) || "take".equals(subcommand) || "setamount".equals(subcommand)) {
+        if (Arrays.asList("keys", "give", "take", "setamount").contains(subcommand)) {
             if (args.length == 2) {
                 return complete(Arrays.stream(Bukkit.getOfflinePlayers())
                         .map(OfflinePlayer::getName)
@@ -329,7 +424,6 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 return complete(Arrays.asList("1", "3", "5", "10", "32", "64"), args[3]);
             }
         }
-
         return Collections.emptyList();
     }
 
@@ -347,7 +441,6 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         if (online != null) {
             return online;
         }
-
         for (OfflinePlayer player : Bukkit.getOfflinePlayers()) {
             if (player.getName() != null && player.getName().equalsIgnoreCase(name)) {
                 return player;
@@ -378,24 +471,9 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
     }
 
     private enum ChangeMode {
-        GIVE(
-                "messages.usage-give",
-                "/cases give <player> <profile> <amount>",
-                "messages.case-given",
-                "Выдано %amount% ключ(ей) %case% игроку %player%."
-        ),
-        TAKE(
-                "messages.usage-take",
-                "/cases take <player> <profile> <amount>",
-                "messages.case-taken",
-                "Удалено %amount% ключ(ей) %case% у игрока %player%."
-        ),
-        SET(
-                "messages.usage-setamount",
-                "/cases setamount <player> <profile> <amount>",
-                "messages.case-set",
-                "Баланс %player% для %case% установлен на %amount%."
-        );
+        GIVE("messages.usage-give", "/cases give <player> <profile> <amount>", "messages.case-given", "Выдано %amount% ключ(ей) %case% игроку %player%."),
+        TAKE("messages.usage-take", "/cases take <player> <profile> <amount>", "messages.case-taken", "Удалено %amount% ключ(ей) %case% у игрока %player%."),
+        SET("messages.usage-setamount", "/cases setamount <player> <profile> <amount>", "messages.case-set", "Баланс %player% для %case% установлен на %amount%.");
 
         private final String usagePath;
         private final String usageFallback;
@@ -410,4 +488,3 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         }
     }
 }
-

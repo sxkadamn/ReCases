@@ -12,6 +12,7 @@ import java.util.UUID;
 
 public class OpeningSession {
 
+    private final UUID openingId;
     private final UUID playerId;
     private final String playerName;
     private final String selectedCase;
@@ -28,6 +29,7 @@ public class OpeningSession {
     private boolean rewardGranted;
 
     public OpeningSession(Player player, String selectedCase, String animationId, int requiredSelections, CaseItem finalReward, boolean guaranteedReward) {
+        this.openingId = UUID.randomUUID();
         this.playerId = player.getUniqueId();
         this.playerName = player.getName();
         this.selectedCase = selectedCase;
@@ -35,6 +37,10 @@ public class OpeningSession {
         this.requiredSelections = requiredSelections;
         this.finalReward = finalReward;
         this.guaranteedReward = guaranteedReward;
+    }
+
+    public UUID getOpeningId() {
+        return openingId;
     }
 
     public UUID getPlayerId() {

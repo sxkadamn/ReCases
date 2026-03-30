@@ -21,7 +21,11 @@ import java.util.regex.Pattern;
 public class ItemFactory {
 
     private static final Pattern TEXTURE_URL_PATTERN = Pattern.compile("\"url\"\\s*:\\s*\"([^\"]+)\"");
-    private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacySection();
+    private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.builder()
+            .character('&')
+            .hexColors()
+            .useUnusualXRepeatedCharacterHexFormat()
+            .build();
 
     public ItemStack create(String materialDefinition, String displayName) {
         return create(materialDefinition, displayName, null);
@@ -85,5 +89,12 @@ public class ItemFactory {
         } catch (IllegalArgumentException | MalformedURLException exception) {
             return null;
         }
+    }
+
+    public String serialize(ItemStack item) {
+        if (item == null || item.getType().isAir()) {
+            return "ITEM;STONE";
+        }
+        return "ITEM;" + item.getType().name();
     }
 }

@@ -2,10 +2,12 @@ package net.recases.services;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.title.Title;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,14 +20,26 @@ public class MessageService {
 
     private final JavaPlugin plugin;
     private final TextFormatter textFormatter;
+    private YamlConfiguration messagesConfig = new YamlConfiguration();
 
     public MessageService(JavaPlugin plugin, TextFormatter textFormatter) {
         this.plugin = plugin;
         this.textFormatter = textFormatter;
+        reload();
+    }
+
+    public void reload() {
+        String locale = plugin.getConfig().getString("settings.locale.default", "ru").trim().toLowerCase();
+        File file = new File(plugin.getDataFolder(), "messages_" + locale + ".yml");
+        messagesConfig = file.exists() ? YamlConfiguration.loadConfiguration(file) : new YamlConfiguration();
     }
 
     public String get(String path, String fallback) {
-        return textFormatter.colorize(plugin.getConfig().getString(path, fallback));
+        String value = messagesConfig.getString(path);
+        if (value == null) {
+            value = plugin.getConfig().getString(path, fallback);
+        }
+        return textFormatter.colorize(value == null ? fallback : value);
     }
 
     public String get(String path, String fallback, String... replacements) {
@@ -41,7 +55,10 @@ public class MessageService {
     }
 
     public List<String> getList(String path, List<String> fallback) {
-        List<String> lines = plugin.getConfig().getStringList(path);
+        List<String> lines = messagesConfig.getStringList(path);
+        if (lines.isEmpty()) {
+            lines = plugin.getConfig().getStringList(path);
+        }
         List<String> source = lines.isEmpty() ? fallback : lines;
         return source.stream()
                 .map(textFormatter::colorize)

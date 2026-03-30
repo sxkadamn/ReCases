@@ -12,7 +12,11 @@ import java.util.regex.Pattern;
 public class TextFormatter {
 
     private static final Pattern HEX_PATTERN = Pattern.compile("#[a-fA-F0-9]{6}");
-    private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacySection();
+    private static final LegacyComponentSerializer AMPERSAND_SERIALIZER = LegacyComponentSerializer.builder()
+            .character('&')
+            .hexColors()
+            .useUnusualXRepeatedCharacterHexFormat()
+            .build();
 
     public String colorize(String message) {
         if (message == null) {
@@ -29,7 +33,7 @@ public class TextFormatter {
     }
 
     public Component asComponent(String message) {
-        return LEGACY_SERIALIZER.deserialize(colorize(message));
+        return AMPERSAND_SERIALIZER.deserialize(normalize(message));
     }
 
     public List<Component> asComponents(List<String> lines) {
@@ -50,6 +54,20 @@ public class TextFormatter {
             builder.append('&').append(hexCode.charAt(i));
         }
         return builder.toString();
+    }
+
+    private String normalize(String message) {
+        if (message == null) {
+            return "";
+        }
+
+        Matcher matcher = HEX_PATTERN.matcher(message);
+        StringBuffer buffer = new StringBuffer();
+        while (matcher.find()) {
+            matcher.appendReplacement(buffer, Matcher.quoteReplacement(toLegacyHex(matcher.group())));
+        }
+        matcher.appendTail(buffer);
+        return buffer.toString();
     }
 }
 

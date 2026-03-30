@@ -26,6 +26,9 @@ import net.recases.services.LeaderboardHologramService;
 import net.recases.services.MessageService;
 import net.recases.services.RewardService;
 import net.recases.services.SchematicService;
+import net.recases.services.DiscordWebhookService;
+import net.recases.services.OpeningResultService;
+import net.recases.services.RewardAuditService;
 import net.recases.services.StatsService;
 import net.recases.services.StorageService;
 import net.recases.services.TextFormatter;
@@ -56,6 +59,9 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     private StatsService statsService;
     private LeaderboardHologramService leaderboardHologramService;
     private CaseService caseService;
+    private RewardAuditService rewardAuditService;
+    private DiscordWebhookService discordWebhookService;
+    private OpeningResultService openingResultService;
 
     @Override
     public void onEnable() {
@@ -66,6 +72,8 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         }
 
         saveDefaultConfig();
+        saveResourceIfMissing("messages_ru.yml");
+        saveResourceIfMissing("messages_en.yml");
 
         entityRegistry = new EntityRegistry();
         keyCache = new KeyCache();
@@ -80,8 +88,11 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         rewardService = new RewardService(this, textFormatter);
         storageService = new StorageService(this, keyCache);
         statsService = new StatsService(this);
+        rewardAuditService = new RewardAuditService(this);
+        discordWebhookService = new DiscordWebhookService(this);
         leaderboardHologramService = new LeaderboardHologramService(this, textFormatter);
         caseService = new CaseService(this, entityRegistry, itemFactory, textFormatter, worldService);
+        openingResultService = new OpeningResultService(this);
 
         reloadPluginState();
         registerEvents();
@@ -99,14 +110,19 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         cleanupResidualEntities();
         statsService.close();
         storageService.close();
+        rewardAuditService.close();
+        discordWebhookService.close();
     }
 
     public void reloadPluginState() {
         configService.reload();
         schematicService.reload();
+        messageService.reload();
         caseService.clear();
         storageService.reload();
         statsService.reload();
+        rewardAuditService.reload();
+        discordWebhookService.reload();
         caseService.reload();
         leaderboardHologramService.reload();
     }
@@ -197,6 +213,25 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
 
     public CaseService getCaseService() {
         return caseService;
+    }
+
+    public RewardAuditService getRewardAudit() {
+        return rewardAuditService;
+    }
+
+    public DiscordWebhookService getDiscordWebhooks() {
+        return discordWebhookService;
+    }
+
+    public OpeningResultService getOpeningResults() {
+        return openingResultService;
+    }
+
+    private void saveResourceIfMissing(String resourcePath) {
+        java.io.File target = new java.io.File(getDataFolder(), resourcePath);
+        if (!target.exists()) {
+            saveResource(resourcePath, false);
+        }
     }
 
     private boolean isSupportedServerVersion() {

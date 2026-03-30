@@ -1,5 +1,6 @@
 package net.recases.gui.impl;
 
+import net.kyori.adventure.text.Component;
 import net.recases.gui.Menu;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -13,7 +14,7 @@ public final class MenuManager {
     private final Map<Inventory, Menu> menusByInventory = new HashMap<>();
     private final Map<UUID, Menu> openMenus = new HashMap<>();
 
-    public Menu createMenu(String id, String title, int rows) {
+    public Menu createMenu(String id, Component title, int rows) {
         Menu menu = new Menu(id, title, rows);
         menusByInventory.put(menu.getInventory(), menu);
         return menu;

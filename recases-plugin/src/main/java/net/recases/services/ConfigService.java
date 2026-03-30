@@ -15,7 +15,7 @@ import java.util.Set;
 
 public class ConfigService {
 
-    private static final int CURRENT_VERSION = 5;
+    private static final int CURRENT_VERSION = 6;
     private static final Set<String> KNOWN_ANIMATIONS = Set.of(
             "classic",
             "circle",
@@ -76,6 +76,19 @@ public class ConfigService {
             plugin.getConfig().set("settings.schematics.animations.classic.offset.y", -1);
             plugin.getConfig().set("settings.schematics.animations.classic.offset.z", -2);
             plugin.getConfig().set("settings.schematics.animations.classic.ignore-air", false);
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.locale") == null) {
+            plugin.getConfig().set("settings.locale.default", "ru");
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.webhooks.discord") == null) {
+            plugin.getConfig().set("settings.webhooks.discord.enabled", false);
+            plugin.getConfig().set("settings.webhooks.discord.url", "");
+            plugin.getConfig().set("settings.webhooks.discord.username", "ReCases");
+            plugin.getConfig().set("settings.webhooks.discord.avatar-url", "");
+            plugin.getConfig().set("settings.webhooks.discord.notify-rare", true);
+            plugin.getConfig().set("settings.webhooks.discord.notify-guaranteed", true);
         }
 
         migrateRewardActions();

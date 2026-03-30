@@ -54,7 +54,7 @@ public class RoundListener implements Listener {
         Player player = event.getPlayer();
         if (!session.isParticipant(player)) {
             event.setCancelled(true);
-            plugin.getMessages().send(player, "messages.case-opened-by-other", "#ff6b6bЭтот кейс сейчас открывает другой игрок.");
+            plugin.getMessages().send(player, "messages.case-opened-by-other", "#ff6b6bР­С‚РѕС‚ РєРµР№СЃ СЃРµР№С‡Р°СЃ РѕС‚РєСЂС‹РІР°РµС‚ РґСЂСѓРіРѕР№ РёРіСЂРѕРє.");
             return;
         }
         if (!session.isTrackedChest(block.getLocation()) || !session.markOpened(block.getLocation())) {
@@ -96,7 +96,7 @@ public class RoundListener implements Listener {
 
         if (!session.isParticipant(player)) {
             event.setCancelled(true);
-            plugin.getMessages().send(player, "messages.case-opened-by-other", "#ff6b6bЭтот кейс сейчас открывает другой игрок.");
+            plugin.getMessages().send(player, "messages.case-opened-by-other", "#ff6b6bР­С‚РѕС‚ РєРµР№СЃ СЃРµР№С‡Р°СЃ РѕС‚РєСЂС‹РІР°РµС‚ РґСЂСѓРіРѕР№ РёРіСЂРѕРє.");
             return;
         }
         if (!session.isTrackedEntity(clickedEntity) || !session.markOpened(clickedEntity)) {
@@ -121,7 +121,7 @@ public class RoundListener implements Listener {
         boolean finalPick = session.getOpenedCount() >= session.getRequiredSelections();
         CaseItem reward = session.getFinalReward();
         if (reward == null) {
-            plugin.getMessages().send(player, "messages.case-reward-failed", "#ff6b6bНе удалось выбрать награду. Проверьте конфиг кейса.");
+            plugin.getMessages().send(player, "messages.case-reward-failed", "#ff6b6bРќРµ СѓРґР°Р»РѕСЃСЊ РІС‹Р±СЂР°С‚СЊ РЅР°РіСЂР°РґСѓ. РџСЂРѕРІРµСЂСЊС‚Рµ РєРѕРЅС„РёРі РєРµР№СЃР°.");
             plugin.getCaseService().abortOpening(runtime, true);
             return;
         }
@@ -183,12 +183,7 @@ public class RoundListener implements Listener {
                     return;
                 }
 
-                session.markRewardGranted();
-                plugin.getRewardService().execute(player, reward.getActions());
-                plugin.getStats().recordOpening(player, session.getSelectedCase(), reward, session.isGuaranteedReward());
-                plugin.getLeaderboardHolograms().refreshAll();
-                plugin.getMessages().send(player, "messages.case-reward-received", "#80ed99Вы получили награду: #ffffff%reward%", "%reward%", reward.getName());
-                plugin.getCaseService().completeOpening(runtime);
+                plugin.getOpeningResults().complete(player, runtime, session, reward);
             }
         }.runTaskLater(plugin, displayTicks);
     }

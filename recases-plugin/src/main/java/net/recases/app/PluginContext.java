@@ -12,6 +12,9 @@ import net.recases.services.StorageService;
 import net.recases.services.TextFormatter;
 import net.recases.services.WorldService;
 import net.recases.services.SchematicService;
+import net.recases.services.DiscordWebhookService;
+import net.recases.services.OpeningResultService;
+import net.recases.services.RewardAuditService;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.Plugin;
 
@@ -40,6 +43,12 @@ public interface PluginContext extends Plugin {
     LeaderboardHologramService getLeaderboardHolograms();
 
     CaseService getCaseService();
+
+    RewardAuditService getRewardAudit();
+
+    DiscordWebhookService getDiscordWebhooks();
+
+    OpeningResultService getOpeningResults();
 
     FileConfiguration getConfig();
 

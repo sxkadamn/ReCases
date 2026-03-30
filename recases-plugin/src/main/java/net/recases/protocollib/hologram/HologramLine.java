@@ -11,7 +11,11 @@ import org.bukkit.plugin.Plugin;
 public class HologramLine {
 
     public static final String HOLOGRAM_METADATA = "recases_hologram_line";
-    private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.legacySection();
+    private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.builder()
+            .character('&')
+            .hexColors()
+            .useUnusualXRepeatedCharacterHexFormat()
+            .build();
 
     private final Plugin plugin;
     private String text;

@@ -389,12 +389,7 @@ public class NeuralOpeningAnimation implements OpeningAnimation {
         visual.getWorld().playSound(visual, Sound.ENTITY_PLAYER_LEVELUP, volume(1.0F), 1.05F);
         removeIfValid(winner.stand);
 
-        session.markRewardGranted();
-        plugin.getRewardService().execute(player, session.getFinalReward().getActions());
-        plugin.getStats().recordOpening(player, session.getSelectedCase(), session.getFinalReward(), session.isGuaranteedReward());
-        plugin.getLeaderboardHolograms().refreshAll();
-        plugin.getMessages().send(player, "messages.case-reward-received", "#80ed99Вы получили награду: #ffffff%reward%", "%reward%", session.getFinalReward().getName());
-        plugin.getCaseService().completeOpening(runtime);
+        plugin.getOpeningResults().complete(player, runtime, session, session.getFinalReward());
     }
 
     private void spawnNodePulse(Node node, int ticks) {

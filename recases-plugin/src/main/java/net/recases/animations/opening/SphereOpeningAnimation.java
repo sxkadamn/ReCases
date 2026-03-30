@@ -274,12 +274,7 @@ public class SphereOpeningAnimation implements OpeningAnimation {
         removeIfValid(winner.stand);
         clearSlots(slots);
 
-        session.markRewardGranted();
-        plugin.getRewardService().execute(player, session.getFinalReward().getActions());
-        plugin.getStats().recordOpening(player, session.getSelectedCase(), session.getFinalReward(), session.isGuaranteedReward());
-        plugin.getLeaderboardHolograms().refreshAll();
-        plugin.getMessages().send(player, "messages.case-reward-received", "#80ed99Вы получили награду: #ffffff%reward%", "%reward%", session.getFinalReward().getName());
-        plugin.getCaseService().completeOpening(runtime);
+        plugin.getOpeningResults().complete(player, runtime, session, session.getFinalReward());
     }
 
     private void drawConnections(List<SphereSlot> slots, OpeningSession session) {

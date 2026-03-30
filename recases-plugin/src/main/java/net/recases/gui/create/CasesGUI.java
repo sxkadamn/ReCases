@@ -34,7 +34,7 @@ public class CasesGUI {
 
         Menu menu = plugin.getMenuManager().createMenu(
                 "case-selector:" + runtime.getId(),
-                plugin.getMessages().get("menus.case-selector.title", "#ffd166Кейсы"),
+                plugin.getMessages().getComponent("menus.case-selector.title", "#ffd166Кейсы"),
                 plugin.getConfig().getInt("menus.case-selector.rows", 6)
         );
         menu.cancelTopInventoryClicks(true).cancelBottomInventoryClicks(true);
