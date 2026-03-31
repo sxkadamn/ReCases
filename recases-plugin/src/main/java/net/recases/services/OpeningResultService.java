@@ -27,7 +27,7 @@ public class OpeningResultService {
         }
 
         session.markRewardGranted();
-        plugin.getRewardService().execute(player, reward.getActions());
+        plugin.getRewardService().execute(player, reward);
         plugin.getStats().recordOpening(player, session.getSelectedCase(), reward, session.isGuaranteedReward());
         plugin.getLeaderboardHolograms().refreshAll();
         plugin.getMessages().send(player, "messages.case-reward-received", "#80ed99Вы получили награду: #ffffff%reward%", "%reward%", reward.getName());

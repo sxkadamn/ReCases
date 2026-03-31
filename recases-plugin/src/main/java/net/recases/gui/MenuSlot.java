@@ -7,16 +7,18 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
-import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class MenuSlot {
 
+    private static final Pattern HEX_PATTERN = Pattern.compile("#[a-fA-F0-9]{6}");
     private static final LegacyComponentSerializer LEGACY_SERIALIZER = LegacyComponentSerializer.builder()
             .character('&')
             .hexColors()
@@ -53,7 +55,7 @@ public class MenuSlot {
     public MenuSlot setDisplay(String display) {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.displayName(LEGACY_SERIALIZER.deserialize(display == null ? "" : display));
+            meta.displayName(LEGACY_SERIALIZER.deserialize(normalize(display)));
             item.setItemMeta(meta);
         }
         return this;
@@ -63,7 +65,7 @@ public class MenuSlot {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.lore(lore.stream()
-                    .map(line -> LEGACY_SERIALIZER.deserialize(line == null ? "" : line))
+                    .map(line -> LEGACY_SERIALIZER.deserialize(normalize(line)))
                     .collect(Collectors.toList()));
             item.setItemMeta(meta);
         }
@@ -149,6 +151,29 @@ public class MenuSlot {
 
     void setPosition(int position) {
         this.position = position;
+    }
+
+    private String normalize(String message) {
+        if (message == null) {
+            return "";
+        }
+
+        Matcher matcher = HEX_PATTERN.matcher(message);
+        StringBuffer buffer = new StringBuffer();
+        while (matcher.find()) {
+            matcher.appendReplacement(buffer, Matcher.quoteReplacement(toLegacyHex(matcher.group())));
+        }
+        matcher.appendTail(buffer);
+        return buffer.toString();
+    }
+
+    private String toLegacyHex(String hexCode) {
+        StringBuilder builder = new StringBuilder(14);
+        builder.append("&x");
+        for (int i = 1; i < hexCode.length(); i++) {
+            builder.append('&').append(hexCode.charAt(i));
+        }
+        return builder.toString();
     }
 }
 

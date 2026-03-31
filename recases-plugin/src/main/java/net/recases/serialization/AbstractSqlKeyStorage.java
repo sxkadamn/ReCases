@@ -18,6 +18,8 @@ public abstract class AbstractSqlKeyStorage implements KeyStorage {
 
     protected abstract String upsertSql();
 
+    protected abstract String changeSql();
+
     protected abstract String rowCountSql();
 
     protected Connection openConnection() throws SQLException {
@@ -40,17 +42,9 @@ public abstract class AbstractSqlKeyStorage implements KeyStorage {
 
     @Override
     public int getCaseAmount(PlayerKey playerKey, String caseName) {
-        String sql = "SELECT amount FROM recases_keys WHERE player_id = ? AND case_name = ?";
         try (Connection connection = openConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, playerKey.getUniqueId().toString());
-            statement.setString(2, normalizeCaseName(caseName));
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next()) {
-                    return Math.max(0, resultSet.getInt("amount"));
-                }
-            }
-            return 0;
+             PreparedStatement statement = connection.prepareStatement(selectAmountSql())) {
+            return getCaseAmount(statement, playerKey, caseName);
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to read case amount", exception);
         }
@@ -77,6 +71,32 @@ public abstract class AbstractSqlKeyStorage implements KeyStorage {
     }
 
     @Override
+    public int changeCaseAmount(PlayerKey playerKey, String caseName, int delta) {
+        String normalizedCaseName = normalizeCaseName(caseName);
+        try (Connection connection = openConnection()) {
+            try (PreparedStatement statement = connection.prepareStatement(changeSql())) {
+                statement.setString(1, playerKey.getUniqueId().toString());
+                statement.setString(2, playerKey.getPlayerName());
+                statement.setString(3, normalizedCaseName);
+                statement.setInt(4, delta);
+                statement.executeUpdate();
+            }
+
+            int updated;
+            try (PreparedStatement statement = connection.prepareStatement(selectAmountSql())) {
+                updated = getCaseAmount(statement, playerKey, normalizedCaseName);
+            }
+            if (updated <= 0) {
+                deleteCaseAmount(connection, playerKey, normalizedCaseName);
+                return 0;
+            }
+            return updated;
+        } catch (SQLException exception) {
+            throw new RuntimeException("Failed to change case amount", exception);
+        }
+    }
+
+    @Override
     public boolean isEmpty() {
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(rowCountSql());
@@ -91,20 +111,38 @@ public abstract class AbstractSqlKeyStorage implements KeyStorage {
     public void close() {
     }
 
+    private int getCaseAmount(PreparedStatement statement, PlayerKey playerKey, String caseName) throws SQLException {
+        statement.setString(1, playerKey.getUniqueId().toString());
+        statement.setString(2, normalizeCaseName(caseName));
+        try (ResultSet resultSet = statement.executeQuery()) {
+            if (resultSet.next()) {
+                return Math.max(0, resultSet.getInt("amount"));
+            }
+        }
+        return 0;
+    }
+
     private void deleteCaseAmount(PlayerKey playerKey, String caseName) {
-        String sql = "DELETE FROM recases_keys WHERE player_id = ? AND case_name = ?";
-        try (Connection connection = openConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, playerKey.getUniqueId().toString());
-            statement.setString(2, normalizeCaseName(caseName));
-            statement.executeUpdate();
+        try (Connection connection = openConnection()) {
+            deleteCaseAmount(connection, playerKey, caseName);
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to delete case amount", exception);
         }
+    }
+
+    private void deleteCaseAmount(Connection connection, PlayerKey playerKey, String caseName) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("DELETE FROM recases_keys WHERE player_id = ? AND case_name = ?")) {
+            statement.setString(1, playerKey.getUniqueId().toString());
+            statement.setString(2, normalizeCaseName(caseName));
+            statement.executeUpdate();
+        }
+    }
+
+    private String selectAmountSql() {
+        return "SELECT amount FROM recases_keys WHERE player_id = ? AND case_name = ?";
     }
 
     protected String normalizeCaseName(String caseName) {
         return caseName.toLowerCase();
     }
 }
-

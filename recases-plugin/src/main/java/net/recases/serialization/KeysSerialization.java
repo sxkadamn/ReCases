@@ -17,6 +17,7 @@ public class KeysSerialization implements AutoCloseable {
     private final KeyCache cache;
     private final KeyStorage storage;
     private final File legacyYamlFile;
+    private final boolean networkSyncEnabled;
     private final ExecutorService writer = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "recases-keys-writer");
         thread.setDaemon(true);
@@ -27,6 +28,8 @@ public class KeysSerialization implements AutoCloseable {
         this.plugin = plugin;
         this.cache = cache;
         this.legacyYamlFile = new File(plugin.getDataFolder(), "keys.yml");
+        this.networkSyncEnabled = plugin.getConfig().getBoolean("settings.network-sync.enabled", false)
+                && "mysql".equalsIgnoreCase(plugin.getConfig().getString("settings.storage.type", "sqlite"));
         this.storage = createStorage(plugin.getConfig());
         this.storage.initialize();
         migrateLegacyYamlIfNeeded(plugin.getConfig());
@@ -44,12 +47,18 @@ public class KeysSerialization implements AutoCloseable {
         if (amount <= 0) {
             return;
         }
-        changeCaseAmount(player, caseName, current -> current + amount);
+        changeCaseAmount(player, caseName, amount);
     }
 
     public int getCaseAmount(OfflinePlayer player, String caseName) {
         PlayerKey playerKey = PlayerKey.from(player);
         String normalizedCaseName = normalizeCaseName(caseName);
+        if (networkSyncEnabled) {
+            int amount = storage.getCaseAmount(playerKey, normalizedCaseName);
+            cache.putKeyAmount(playerKey.getUniqueId(), normalizedCaseName, amount);
+            return amount;
+        }
+
         Integer cached = cache.getKeyAmount(playerKey.getUniqueId(), normalizedCaseName);
         if (cached != null) {
             return cached;
@@ -64,7 +73,7 @@ public class KeysSerialization implements AutoCloseable {
         if (amount <= 0) {
             return;
         }
-        changeCaseAmount(player, caseName, current -> current - amount);
+        changeCaseAmount(player, caseName, -amount);
     }
 
     @Override
@@ -78,12 +87,16 @@ public class KeysSerialization implements AutoCloseable {
         storage.close();
     }
 
-    private void changeCaseAmount(OfflinePlayer player, String caseName, java.util.function.IntUnaryOperator updater) {
+    private void changeCaseAmount(OfflinePlayer player, String caseName, int delta) {
         PlayerKey playerKey = PlayerKey.from(player);
         String normalizedCaseName = normalizeCaseName(caseName);
         int current = resolveCurrentAmount(playerKey, normalizedCaseName);
-        int updated = cache.updateKeyAmount(playerKey.getUniqueId(), normalizedCaseName, current, updater);
-        submitWrite(() -> storage.setCaseAmount(playerKey, normalizedCaseName, updated));
+        int updated = Math.max(0, current + delta);
+        cache.putKeyAmount(playerKey.getUniqueId(), normalizedCaseName, updated);
+        submitWrite(() -> {
+            int remote = storage.changeCaseAmount(playerKey, normalizedCaseName, delta);
+            cache.putKeyAmount(playerKey.getUniqueId(), normalizedCaseName, remote);
+        });
     }
 
     private int resolveCurrentAmount(PlayerKey playerKey, String caseName) {

@@ -43,8 +43,14 @@ public class SqliteKeyStorage extends AbstractSqlKeyStorage {
     }
 
     @Override
+    protected String changeSql() {
+        return "INSERT INTO recases_keys (player_id, player_name, case_name, amount) VALUES (?, ?, ?, ?) "
+                + "ON CONFLICT(player_id, case_name) DO UPDATE SET player_name = excluded.player_name, amount = MAX(0, recases_keys.amount + excluded.amount)";
+    }
+
+    @Override
     protected String rowCountSql() {
-        return "SELECT COUNT(*) FROM recases_keys";
+        return "SELECT COUNT(*) FROM recases_keys WHERE amount > 0";
     }
 }
 

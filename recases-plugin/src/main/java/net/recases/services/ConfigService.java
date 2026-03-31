@@ -18,7 +18,7 @@ import java.util.Set;
 
 public class ConfigService {
 
-    private static final int CURRENT_VERSION = 7;
+    private static final int CURRENT_VERSION = 8;
     private static final Set<String> KNOWN_ANIMATIONS = Set.of(
             "classic",
             "circle",
@@ -107,6 +107,17 @@ public class ConfigService {
             plugin.getConfig().set("settings.updater.resource-id", 0);
             plugin.getConfig().set("settings.updater.timeout-seconds", 10);
             plugin.getConfig().set("settings.updater.download-url", "");
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.network-sync") == null) {
+            plugin.getConfig().set("settings.network-sync.enabled", false);
+            plugin.getConfig().set("settings.network-sync.poll-interval-seconds", 15);
+            plugin.getConfig().set("settings.network-sync.sync-keys", true);
+            plugin.getConfig().set("settings.network-sync.sync-stats", true);
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.presets") == null) {
+            plugin.getConfig().set("settings.presets.folder", "presets");
         }
 
         migrateRewardActions();
@@ -242,6 +253,19 @@ public class ConfigService {
                     && downloadUrl.isEmpty()) {
                 warnings.add("Updater auto-download is enabled but no resource-id or direct download-url is configured.");
             }
+        }
+
+        if (plugin.getConfig().getBoolean("settings.network-sync.enabled", false)) {
+            if (!"mysql".equalsIgnoreCase(plugin.getConfig().getString("settings.storage.type", "sqlite"))) {
+                warnings.add("Network sync is enabled but storage.type is not mysql.");
+            }
+            if (plugin.getConfig().getInt("settings.network-sync.poll-interval-seconds", 15) < 1) {
+                warnings.add("settings.network-sync.poll-interval-seconds must be at least 1.");
+            }
+        }
+
+        if (plugin.getConfig().getString("settings.presets.folder", "presets").trim().isEmpty()) {
+            warnings.add("settings.presets.folder cannot be empty.");
         }
 
         if (warnings.isEmpty()) {

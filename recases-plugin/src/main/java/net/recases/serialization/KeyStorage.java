@@ -10,6 +10,8 @@ public interface KeyStorage extends Closeable {
 
     void setCaseAmount(PlayerKey playerKey, String caseName, int amount);
 
+    int changeCaseAmount(PlayerKey playerKey, String caseName, int delta);
+
     boolean isEmpty();
 
     @Override

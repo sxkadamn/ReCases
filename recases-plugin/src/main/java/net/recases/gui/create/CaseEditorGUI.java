@@ -67,7 +67,10 @@ public class CaseEditorGUI {
                         return;
                     }
                     String rewardId = "reward_" + System.currentTimeMillis();
-                    String displayName = hand.getType().name();
+                    String displayName = plugin.getItemFactory().serializeDisplayName(hand);
+                    if (displayName.isEmpty()) {
+                        displayName = hand.getType().name();
+                    }
                     plugin.getCaseService().addReward(profileId, rewardId, hand, displayName);
                     plugin.getMessages().send(clicker, "messages.editor-reward-added", "#80ed99Награда #ffffff%reward% #80ed99добавлена.", "%reward%", displayName);
                     plugin.getMessages().send(clicker, "messages.editor-saved", "#80ed99Изменения сохранены и runtime перезагружен.");

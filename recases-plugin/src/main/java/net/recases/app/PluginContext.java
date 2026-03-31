@@ -54,6 +54,8 @@ public interface PluginContext extends Plugin {
 
     void saveConfig();
 
+    void saveConfigUtf8();
+
     void reloadPluginState();
 }
 

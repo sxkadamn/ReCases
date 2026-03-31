@@ -55,8 +55,14 @@ public class MySqlKeyStorage extends AbstractSqlKeyStorage {
     }
 
     @Override
+    protected String changeSql() {
+        return "INSERT INTO recases_keys (player_id, player_name, case_name, amount) VALUES (?, ?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE player_name = VALUES(player_name), amount = GREATEST(0, amount + VALUES(amount))";
+    }
+
+    @Override
     protected String rowCountSql() {
-        return "SELECT COUNT(*) FROM recases_keys";
+        return "SELECT COUNT(*) FROM recases_keys WHERE amount > 0";
     }
 }
 

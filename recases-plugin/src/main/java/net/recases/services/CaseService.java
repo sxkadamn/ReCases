@@ -13,9 +13,13 @@ import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -128,6 +132,92 @@ public class CaseService {
         abortOpening(runtime, false);
     }
 
+    public boolean beginOpening(Player player, CaseRuntime runtime, String profileId) {
+        if (player == null || runtime == null) {
+            return false;
+        }
+
+        if (!runtime.isAvailable()) {
+            plugin.getMessages().send(player, "messages.case-unavailable", "#ff6b6bЭта точка кейса сейчас недоступна. Попробуйте позже или перезагрузите плагин.");
+            player.closeInventory();
+            return false;
+        }
+
+        CaseProfile profile = getProfile(profileId);
+        if (profile == null) {
+            plugin.getMessages().send(player, "messages.case-not-found", "#ff6b6bПрофиль кейса '#ffffff%case%#ff6b6b' не найден.", "%case%", profileId);
+            player.closeInventory();
+            return false;
+        }
+
+        if (runtime.isOpening()) {
+            plugin.getMessages().send(player, "messages.case-busy", "#ff6b6bЭтот кейс уже открывает другой игрок.");
+            player.closeInventory();
+            return false;
+        }
+
+        if (plugin.getStorage().getCaseAmount(player, profileId) <= 0) {
+            plugin.getMessages().send(player, "messages.no-keys", "#ff6b6bУ вас нет ключей от этого профиля кейса.");
+            player.closeInventory();
+            return false;
+        }
+
+        CaseItem reward = getRandomReward(profileId);
+        if (reward == null) {
+            plugin.getMessages().send(player, "messages.case-no-rewards", "#ff6b6bДля этого профиля кейса не настроены награды.");
+            player.closeInventory();
+            return false;
+        }
+
+        boolean guaranteedReward = plugin.getStats().shouldGuarantee(player, profile);
+        if (guaranteedReward) {
+            reward = getGuaranteedReward(profileId);
+            if (reward == null) {
+                guaranteedReward = false;
+                reward = getRandomReward(profileId);
+            }
+        }
+        if (reward == null) {
+            plugin.getMessages().send(player, "messages.case-no-rewards", "#ff6b6bДля этого профиля кейса не настроены награды.");
+            player.closeInventory();
+            return false;
+        }
+
+        String animationId = plugin.getAnimations().resolveAnimationId(runtime, profile);
+        String animationName = plugin.getAnimations().getDisplayName(animationId);
+        int requiredSelections = plugin.getAnimations().getRequiredSelections(animationId);
+        OpeningSession session = new OpeningSession(player, profileId, animationId, requiredSelections, reward, guaranteedReward);
+        session.setOpeningAnchor(plugin.getWorldService().createOpeningAnchor(
+                runtime.getLocation(),
+                player.getLocation(),
+                plugin.getConfig().getDouble("settings.opening-guard.owner-anchor-distance", 2.15D)
+        ));
+        runtime.setSession(session);
+        runtime.removeHologram();
+        plugin.getSchematics().pasteAnimationScene(session, runtime);
+        if (!plugin.getAnimations().create(plugin, player, runtime, profile).play()) {
+            plugin.getSchematics().cleanup(runtime);
+            runtime.clearSession();
+            runtime.spawnHologram();
+            plugin.getMessages().send(player, "messages.case-unavailable", "#ff6b6bЭта точка кейса сейчас недоступна. Попробуйте позже или перезагрузите плагин.");
+            player.closeInventory();
+            return false;
+        }
+
+        plugin.getStorage().removeCase(player, profileId, 1);
+        session.markKeyConsumed();
+        plugin.getMessages().send(
+                player,
+                "messages.case-opening-started",
+                "#ffd166Вы начали открытие профиля #ffffff%case% #ffd166на точке #ffffff%instance% #ffd166с анимацией #ffffff%animation%#ffd166.",
+                "%case%", profileId,
+                "%instance%", runtime.getId(),
+                "%animation%", animationName
+        );
+        player.closeInventory();
+        return true;
+    }
+
     public boolean createProfile(String profileId) {
         String normalized = normalizeId(profileId);
         if (normalized.isEmpty() || plugin.getConfig().contains("profiles." + normalized)) {
@@ -146,7 +236,7 @@ public class CaseService {
         plugin.getConfig().set(basePath + ".rewards.example.chance", 10);
         plugin.getConfig().set(basePath + ".rewards.example.rare", false);
         plugin.getConfig().set(basePath + ".rewards.example.actions", List.of("message;#80ed99Пример награды"));
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -157,7 +247,7 @@ public class CaseService {
             return false;
         }
         plugin.getConfig().set("profiles." + normalized, null);
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -175,7 +265,7 @@ public class CaseService {
         plugin.getConfig().set(basePath + ".location.y", location.getBlockY());
         plugin.getConfig().set(basePath + ".location.z", location.getBlockZ());
         plugin.getConfig().set(basePath + ".hologram.lines", List.of("#ffd166&lКЕЙС", "#ffffffНажмите, чтобы открыть меню"));
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -186,7 +276,7 @@ public class CaseService {
             return false;
         }
         plugin.getConfig().set("cases.instances." + normalized, null);
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -198,7 +288,7 @@ public class CaseService {
             return false;
         }
         plugin.getConfig().set("profiles." + normalizedProfile + ".animation", normalizedAnimation);
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -215,7 +305,7 @@ public class CaseService {
         }
 
         plugin.getConfig().set("cases.instances." + normalizedInstance + ".animation", normalizedAnimation);
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -251,7 +341,7 @@ public class CaseService {
         plugin.getConfig().set(basePath + ".chance", 10);
         plugin.getConfig().set(basePath + ".rare", false);
         plugin.getConfig().set(basePath + ".actions", List.of("message;#80ed99Вы получили " + (displayName == null || displayName.isEmpty() ? normalizedReward : displayName)));
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -262,7 +352,7 @@ public class CaseService {
             return false;
         }
         plugin.getConfig().set(basePath, null);
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -274,7 +364,7 @@ public class CaseService {
         }
         int current = Math.max(1, plugin.getConfig().getInt(basePath + ".chance", 1));
         plugin.getConfig().set(basePath + ".chance", Math.max(1, current + delta));
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -285,7 +375,7 @@ public class CaseService {
             return false;
         }
         plugin.getConfig().set(basePath + ".rare", !plugin.getConfig().getBoolean(basePath + ".rare", false));
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -296,7 +386,7 @@ public class CaseService {
             return false;
         }
         plugin.getConfig().set(basePath + ".material", itemFactory.serialize(icon));
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -307,7 +397,84 @@ public class CaseService {
             return false;
         }
         plugin.getConfig().set(basePath + ".name", displayName);
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
+        plugin.reloadPluginState();
+        return true;
+    }
+
+    public List<String> getPresetIds() {
+        File[] files = getPresetFolder().listFiles((dir, name) -> name.toLowerCase().endsWith(".yml"));
+        if (files == null || files.length == 0) {
+            return List.of();
+        }
+
+        List<String> ids = new ArrayList<>(files.length);
+        for (File file : files) {
+            String name = file.getName();
+            ids.add(name.substring(0, name.length() - 4));
+        }
+        Collections.sort(ids);
+        return ids;
+    }
+
+    public boolean exportPreset(String profileId, String presetId) {
+        String normalizedProfile = normalizeId(profileId);
+        String normalizedPreset = normalizeId(presetId);
+        ConfigurationSection section = plugin.getConfig().getConfigurationSection("profiles." + normalizedProfile);
+        if (section == null || normalizedPreset.isEmpty()) {
+            return false;
+        }
+
+        File folder = getPresetFolder();
+        if (!folder.exists() && !folder.mkdirs()) {
+            return false;
+        }
+
+        YamlConfiguration preset = new YamlConfiguration();
+        preset.set("preset-version", 1);
+        ConfigurationSection profileSection = preset.createSection("profile");
+        profileSection.set("id", normalizedProfile);
+        copySection(section, profileSection);
+
+        try {
+            preset.save(new File(folder, normalizedPreset + ".yml"));
+            return true;
+        } catch (IOException exception) {
+            plugin.getLogger().warning("Failed to export preset '" + normalizedPreset + "': " + exception.getMessage());
+            return false;
+        }
+    }
+
+    public boolean importPreset(String presetId, String targetProfileId) {
+        String normalizedPreset = normalizeId(presetId);
+        if (normalizedPreset.isEmpty()) {
+            return false;
+        }
+
+        File file = new File(getPresetFolder(), normalizedPreset + ".yml");
+        if (!file.isFile()) {
+            return false;
+        }
+
+        YamlConfiguration preset = YamlConfiguration.loadConfiguration(file);
+        ConfigurationSection section = preset.getConfigurationSection("profile");
+        if (section == null) {
+            return false;
+        }
+
+        String normalizedTarget = normalizeId(targetProfileId);
+        if (normalizedTarget.isEmpty()) {
+            normalizedTarget = normalizeId(section.getString("id", normalizedPreset));
+        }
+        if (normalizedTarget.isEmpty() || plugin.getConfig().contains("profiles." + normalizedTarget)) {
+            return false;
+        }
+
+        String basePath = "profiles." + normalizedTarget;
+        plugin.getConfig().set(basePath, null);
+        ConfigurationSection target = plugin.getConfig().createSection(basePath);
+        copySection(section, target, "id");
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         return true;
     }
@@ -356,7 +523,7 @@ public class CaseService {
                                 displayName,
                                 itemFactory.create(
                                         plugin.getConfig().getString(basePath + ".material", "ITEM;STONE"),
-                                        textFormatter.colorize(displayName)
+                                        displayName
                                 ),
                                 readActions(basePath),
                                 Math.max(1, plugin.getConfig().getInt(basePath + ".chance", 1)),
@@ -372,7 +539,7 @@ public class CaseService {
                     menuSection.getInt("slot", 22),
                     menuSection.getString("display", profileId),
                     menuSection.getStringList("lore"),
-                    menuSection.getString("animation", plugin.getConfig().getString("profiles." + profileId + ".animation", "classic")),
+                    plugin.getConfig().getString("profiles." + profileId + ".animation", AnimationService.CLASSIC),
                     Math.max(0, plugin.getConfig().getInt("profiles." + profileId + ".guarantee.after-opens", 0)),
                     rewards
             );
@@ -415,6 +582,26 @@ public class CaseService {
     private List<String> readActions(String basePath) {
         List<String> actions = plugin.getConfig().getStringList(basePath + ".actions");
         return actions.isEmpty() ? plugin.getConfig().getStringList(basePath + ".commands") : actions;
+    }
+
+    private File getPresetFolder() {
+        return new File(plugin.getDataFolder(), plugin.getConfig().getString("settings.presets.folder", "presets"));
+    }
+
+    private void copySection(ConfigurationSection source, ConfigurationSection target, String... excludedKeys) {
+        List<String> excluded = List.of(excludedKeys);
+        for (String key : source.getKeys(false)) {
+            if (excluded.contains(key)) {
+                continue;
+            }
+
+            if (source.isConfigurationSection(key)) {
+                ConfigurationSection child = target.createSection(key);
+                copySection(source.getConfigurationSection(key), child);
+                continue;
+            }
+            target.set(key, source.get(key));
+        }
     }
 
     private String normalizeId(String value) {

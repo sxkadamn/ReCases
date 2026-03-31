@@ -85,5 +85,24 @@ public class CaseProfile {
     public boolean hasRareRewards() {
         return rewards.stream().anyMatch(CaseItem::isRare);
     }
+
+    public int getTotalChance() {
+        return rewards.stream()
+                .mapToInt(CaseItem::getChance)
+                .sum();
+    }
+
+    public double getChancePercent(CaseItem reward) {
+        if (reward == null) {
+            return 0.0D;
+        }
+
+        int totalChance = getTotalChance();
+        if (totalChance <= 0) {
+            return 0.0D;
+        }
+
+        return (reward.getChance() * 100.0D) / totalChance;
+    }
 }
 

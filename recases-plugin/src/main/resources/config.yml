@@ -1,6 +1,6 @@
 # Версия структуры конфига
 # Нужна плагину для автоматической миграции старых конфигов после обновления
-config-version: 7
+config-version: 8
 
 settings:
   schematics:
@@ -199,6 +199,19 @@ settings:
     timeout-seconds: 10
     # Необязательная прямая ссылка на jar (если пусто, используется Spiget download endpoint)
     download-url: ''
+  network-sync:
+    # Общая синхронизация ключей и статистики между серверами
+    # Работает только с settings.storage.type: mysql
+    enabled: false
+    # Как часто перечитывать shared data из MySQL
+    poll-interval-seconds: 15
+    # Сбрасывать локальный кеш ключей и читать актуальный баланс из БД
+    sync-keys: true
+    # Подтягивать статистику и pity между несколькими серверами
+    sync-stats: true
+  presets:
+    # Папка внутри plugins/ReCases для экспортов/импортов пресетов
+    folder: presets
 
 console:
   yaml-migrated: 'Migrated keys.yml to %storage% storage.'
@@ -211,6 +224,8 @@ menus:
     title: '#ffd166Кейсы'
     # Количество рядов: от 1 до 6
     rows: 6
+  preview:
+    title: '#74c0fcПревью %profile%'
 
 leaderboards:
   # Как часто обновлять голограммы топов
@@ -336,6 +351,12 @@ profiles:
           # lp-group-remove;<group>
           # lp-group-add-temp;<group>;<duration>
           # lp-permission-set;<permission>;<true|false>
+          # item-give[;<amount>] или item-give;<material>;<amount>
+          # sound;<sound>;<volume>;<pitch>
+          # firework;<color|#hex[,#hex]>;<type>;<power>
+          # effect;<potion_effect>;<duration_ticks>;<amplifier>
+          # broadcast-hover;<text>;<hover text>
+          # random-command-group;<cmd1>|<cmd2>|<cmd3>
           - 'message;#ffd166Поздравляем! Вы выиграли #ffffffГИГА'
           - 'title;#ffd166Поздравляем!;#ffffffТеперь у вас ранг ГИГА'
           - 'lp-group-add;giga'

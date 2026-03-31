@@ -27,9 +27,10 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
             "help", "list", "instances", "keys", "give", "take", "setamount", "set", "reload", "top",
-            "createprofile", "deleteprofile", "createinstance", "deleteinstance", "setprofileanimation", "setinstanceanimation", "edit"
+            "createprofile", "deleteprofile", "createinstance", "deleteinstance", "setprofileanimation", "setinstanceanimation", "edit", "preset"
     );
     private static final List<String> TOP_TYPES = Arrays.asList("opens", "rare", "guaranteed");
+    private static final List<String> PRESET_ACTIONS = Arrays.asList("list", "export", "import");
 
     private final PluginContext plugin;
     private final MessageService messages;
@@ -52,6 +53,7 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
             messages.sendList(sender, "messages.help", Collections.emptyList(), "%label%", label);
             messages.send(sender, "messages.help-top", "#ffd166/%label% top <opens|rare|guaranteed> [profile] [limit] #a8dadc- показать таблицы лидеров", "%label%", label);
             messages.send(sender, "messages.help-editor", "#ffd166/%label% edit <profile> #a8dadc- открыть редактор наград", "%label%", label);
+            messages.send(sender, "messages.help-preset", "#ffd166/%label% preset <list|export|import> ... #a8dadc- работа с пресетами", "%label%", label);
             return true;
         }
 
@@ -92,6 +94,8 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 return setInstanceAnimation(sender, args);
             case "edit":
                 return openEditor(sender, args);
+            case "preset":
+                return handlePreset(sender, args);
             default:
                 messages.send(sender, "messages.command-unknown", "Неизвестная подкоманда.");
                 return true;
@@ -216,7 +220,7 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         plugin.getConfig().set(basePath + ".x", location.getX());
         plugin.getConfig().set(basePath + ".y", location.getY());
         plugin.getConfig().set(basePath + ".z", location.getZ());
-        plugin.saveConfig();
+        plugin.saveConfigUtf8();
         plugin.reloadPluginState();
         messages.send(sender, "messages.case-position-saved", "Позиция экземпляра кейса %instance% обновлена.", "%instance%", instanceId);
         return true;
@@ -368,6 +372,55 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean handlePreset(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            messages.send(sender, "messages.usage-preset", "/cases preset <list|export|import> ...");
+            return true;
+        }
+
+        switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "list":
+                List<String> presets = plugin.getCaseService().getPresetIds();
+                if (presets.isEmpty()) {
+                    messages.send(sender, "messages.preset-list-empty", "#ff6b6bПресеты не найдены.");
+                    return true;
+                }
+                messages.send(sender, "messages.preset-list", "#ffd166Пресеты: #ffffff%presets%", "%presets%", String.join(", ", presets));
+                return true;
+            case "export":
+                if (args.length < 3) {
+                    messages.send(sender, "messages.usage-preset-export", "/cases preset export <profile> [preset]");
+                    return true;
+                }
+                String exportProfileId = args[2].toLowerCase(Locale.ROOT);
+                String exportPresetId = args.length >= 4 ? args[3].toLowerCase(Locale.ROOT) : exportProfileId;
+                if (!plugin.getCaseService().exportPreset(exportProfileId, exportPresetId)) {
+                    messages.send(sender, "messages.preset-export-failed", "#ff6b6bНе удалось экспортировать пресет.");
+                    return true;
+                }
+                messages.send(sender, "messages.preset-exported", "#80ed99Пресет #ffffff%preset% #80ed99экспортирован из профиля #ffffff%profile%#80ed99.", "%preset%", exportPresetId, "%profile%", exportProfileId);
+                return true;
+            case "import":
+                if (args.length < 3) {
+                    messages.send(sender, "messages.usage-preset-import", "/cases preset import <preset> [profile]");
+                    return true;
+                }
+                String importPresetId = args[2].toLowerCase(Locale.ROOT);
+                String targetProfileId = args.length >= 4 ? args[3].toLowerCase(Locale.ROOT) : "";
+                if (!plugin.getCaseService().importPreset(importPresetId, targetProfileId)) {
+                    messages.send(sender, "messages.preset-import-failed", "#ff6b6bНе удалось импортировать пресет. Проверьте имя и отсутствие конфликта по id.");
+                    return true;
+                }
+                messages.send(sender, "messages.preset-imported", "#80ed99Пресет #ffffff%preset% #80ed99импортирован как профиль #ffffff%profile%#80ed99.",
+                        "%preset%", importPresetId,
+                        "%profile%", targetProfileId.isEmpty() ? importPresetId : targetProfileId);
+                return true;
+            default:
+                messages.send(sender, "messages.usage-preset", "/cases preset <list|export|import> ...");
+                return true;
+        }
+    }
+
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (!sender.hasPermission("recases.admin")) {
@@ -422,6 +475,24 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
             }
             if (args.length == 4 && !"keys".equals(subcommand)) {
                 return complete(Arrays.asList("1", "3", "5", "10", "32", "64"), args[3]);
+            }
+        }
+        if ("preset".equals(subcommand)) {
+            if (args.length == 2) {
+                return complete(PRESET_ACTIONS, args[1]);
+            }
+            if ("export".equalsIgnoreCase(args[1])) {
+                if (args.length == 3) {
+                    return complete(plugin.getCaseService().getProfileIds(), args[2]);
+                }
+            }
+            if ("import".equalsIgnoreCase(args[1])) {
+                if (args.length == 3) {
+                    return complete(plugin.getCaseService().getPresetIds(), args[2]);
+                }
+                if (args.length == 4) {
+                    return complete(plugin.getCaseService().getProfileIds(), args[3]);
+                }
             }
         }
         return Collections.emptyList();

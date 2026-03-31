@@ -34,6 +34,7 @@ public class StatsService implements AutoCloseable {
         thread.setDaemon(true);
         return thread;
     });
+    private MySqlStatsStorage mySqlStorage;
 
     public StatsService(PluginContext plugin) {
         this.plugin = plugin;
@@ -41,47 +42,14 @@ public class StatsService implements AutoCloseable {
     }
 
     public synchronized void reload() {
+        configureBackend();
         records.clear();
-        if (!file.exists()) {
+        if (mySqlStorage != null) {
+            records.putAll(mySqlStorage.loadAll());
             return;
         }
 
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-        if (config.getConfigurationSection("players") == null) {
-            return;
-        }
-
-        for (String rawUuid : config.getConfigurationSection("players").getKeys(false)) {
-            UUID playerId;
-            try {
-                playerId = UUID.fromString(rawUuid);
-            } catch (IllegalArgumentException exception) {
-                continue;
-            }
-
-            String basePath = "players." + rawUuid;
-            PlayerStatsRecord record = new PlayerStatsRecord(playerId);
-            record.setPlayerName(config.getString(basePath + ".name", playerId.toString()));
-            record.setTotalOpens(Math.max(0, config.getInt(basePath + ".totals.opens", 0)));
-            record.setTotalRareWins(Math.max(0, config.getInt(basePath + ".totals.rare-wins", 0)));
-            record.setTotalGuaranteedWins(Math.max(0, config.getInt(basePath + ".totals.guaranteed-wins", 0)));
-            record.setLastRewardName(config.getString(basePath + ".last-reward.name", ""));
-            record.setLastRewardProfile(config.getString(basePath + ".last-reward.profile", ""));
-
-            if (config.getConfigurationSection(basePath + ".profiles") != null) {
-                for (String profileId : config.getConfigurationSection(basePath + ".profiles").getKeys(false)) {
-                    PlayerStatsRecord.ProfileStatsRecord profile = record.getOrCreateProfile(profileId);
-                    String profilePath = basePath + ".profiles." + profileId;
-                    profile.setOpens(Math.max(0, config.getInt(profilePath + ".opens", 0)));
-                    profile.setRareWins(Math.max(0, config.getInt(profilePath + ".rare-wins", 0)));
-                    profile.setGuaranteedWins(Math.max(0, config.getInt(profilePath + ".guaranteed-wins", 0)));
-                    profile.setPity(Math.max(0, config.getInt(profilePath + ".pity", 0)));
-                    profile.setLastRewardName(config.getString(profilePath + ".last-reward", ""));
-                }
-            }
-
-            records.put(playerId, record);
-        }
+        loadFromYaml();
     }
 
     public synchronized void recordOpening(Player player, String profileId, CaseItem reward, boolean guaranteed) {
@@ -108,6 +76,11 @@ public class StatsService implements AutoCloseable {
             profile.setGuaranteedWins(profile.getGuaranteedWins() + 1);
         }
 
+        if (mySqlStorage != null) {
+            mySqlStorage.recordOpening(player, profileId, reward, guaranteed);
+            return;
+        }
+
         saveAsync();
     }
 
@@ -120,6 +93,7 @@ public class StatsService implements AutoCloseable {
     }
 
     public synchronized int getPity(OfflinePlayer player, String profileId) {
+        refreshPlayerFromRemote(player);
         PlayerStatsRecord.ProfileStatsRecord profile = getProfileRecord(player, profileId);
         return profile == null ? 0 : profile.getPity();
     }
@@ -133,16 +107,19 @@ public class StatsService implements AutoCloseable {
     }
 
     public synchronized String getLastRewardName(OfflinePlayer player) {
+        refreshPlayerFromRemote(player);
         PlayerStatsRecord record = getRecord(player);
         return record == null ? "" : safe(record.getLastRewardName());
     }
 
     public synchronized String getLastRewardName(OfflinePlayer player, String profileId) {
+        refreshPlayerFromRemote(player);
         PlayerStatsRecord.ProfileStatsRecord profile = getProfileRecord(player, profileId);
         return profile == null ? "" : safe(profile.getLastRewardName());
     }
 
     public synchronized int getOpens(OfflinePlayer player, String profileId) {
+        refreshPlayerFromRemote(player);
         if (profileId == null || profileId.trim().isEmpty()) {
             PlayerStatsRecord record = getRecord(player);
             return record == null ? 0 : record.getTotalOpens();
@@ -153,6 +130,7 @@ public class StatsService implements AutoCloseable {
     }
 
     public synchronized int getRareWins(OfflinePlayer player, String profileId) {
+        refreshPlayerFromRemote(player);
         if (profileId == null || profileId.trim().isEmpty()) {
             PlayerStatsRecord record = getRecord(player);
             return record == null ? 0 : record.getTotalRareWins();
@@ -163,6 +141,7 @@ public class StatsService implements AutoCloseable {
     }
 
     public synchronized int getGuaranteedWins(OfflinePlayer player, String profileId) {
+        refreshPlayerFromRemote(player);
         if (profileId == null || profileId.trim().isEmpty()) {
             PlayerStatsRecord record = getRecord(player);
             return record == null ? 0 : record.getTotalGuaranteedWins();
@@ -224,9 +203,16 @@ public class StatsService implements AutoCloseable {
                 .collect(Collectors.toList());
     }
 
+    public synchronized boolean isUsingMysqlBackend() {
+        return mySqlStorage != null;
+    }
+
     @Override
     public void close() {
-        saveAsync();
+        if (mySqlStorage == null) {
+            saveAsync();
+        }
+
         writer.shutdown();
         try {
             if (!writer.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -235,6 +221,67 @@ public class StatsService implements AutoCloseable {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             writer.shutdownNow();
+        }
+    }
+
+    private void configureBackend() {
+        if (!plugin.getConfig().getBoolean("settings.network-sync.enabled", false)
+                || !"mysql".equalsIgnoreCase(plugin.getConfig().getString("settings.storage.type", "sqlite"))) {
+            mySqlStorage = null;
+            return;
+        }
+
+        mySqlStorage = new MySqlStatsStorage(
+                plugin.getConfig().getString("settings.storage.mysql.host", "127.0.0.1"),
+                plugin.getConfig().getInt("settings.storage.mysql.port", 3306),
+                plugin.getConfig().getString("settings.storage.mysql.database", "recases"),
+                plugin.getConfig().getString("settings.storage.mysql.username", "root"),
+                plugin.getConfig().getString("settings.storage.mysql.password", ""),
+                plugin.getConfig().getBoolean("settings.storage.mysql.use-ssl", false)
+        );
+        mySqlStorage.initialize();
+    }
+
+    private void loadFromYaml() {
+        if (!file.exists()) {
+            return;
+        }
+
+        YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+        if (config.getConfigurationSection("players") == null) {
+            return;
+        }
+
+        for (String rawUuid : config.getConfigurationSection("players").getKeys(false)) {
+            UUID playerId;
+            try {
+                playerId = UUID.fromString(rawUuid);
+            } catch (IllegalArgumentException exception) {
+                continue;
+            }
+
+            String basePath = "players." + rawUuid;
+            PlayerStatsRecord record = new PlayerStatsRecord(playerId);
+            record.setPlayerName(config.getString(basePath + ".name", playerId.toString()));
+            record.setTotalOpens(Math.max(0, config.getInt(basePath + ".totals.opens", 0)));
+            record.setTotalRareWins(Math.max(0, config.getInt(basePath + ".totals.rare-wins", 0)));
+            record.setTotalGuaranteedWins(Math.max(0, config.getInt(basePath + ".totals.guaranteed-wins", 0)));
+            record.setLastRewardName(config.getString(basePath + ".last-reward.name", ""));
+            record.setLastRewardProfile(config.getString(basePath + ".last-reward.profile", ""));
+
+            if (config.getConfigurationSection(basePath + ".profiles") != null) {
+                for (String profileId : config.getConfigurationSection(basePath + ".profiles").getKeys(false)) {
+                    PlayerStatsRecord.ProfileStatsRecord profile = record.getOrCreateProfile(profileId);
+                    String profilePath = basePath + ".profiles." + profileId;
+                    profile.setOpens(Math.max(0, config.getInt(profilePath + ".opens", 0)));
+                    profile.setRareWins(Math.max(0, config.getInt(profilePath + ".rare-wins", 0)));
+                    profile.setGuaranteedWins(Math.max(0, config.getInt(profilePath + ".guaranteed-wins", 0)));
+                    profile.setPity(Math.max(0, config.getInt(profilePath + ".pity", 0)));
+                    profile.setLastRewardName(config.getString(profilePath + ".last-reward", ""));
+                }
+            }
+
+            records.put(playerId, record);
         }
     }
 
@@ -337,8 +384,24 @@ public class StatsService implements AutoCloseable {
         }
     }
 
+    private void refreshPlayerFromRemote(OfflinePlayer player) {
+        if (mySqlStorage == null || player == null) {
+            return;
+        }
+
+        PlayerStatsRecord remote = mySqlStorage.loadPlayer(player.getUniqueId());
+        if (remote == null) {
+            records.remove(player.getUniqueId());
+            return;
+        }
+
+        if (remote.getPlayerName() == null || remote.getPlayerName().trim().isEmpty()) {
+            remote.setPlayerName(player.getName() == null ? player.getUniqueId().toString() : player.getName());
+        }
+        records.put(player.getUniqueId(), remote);
+    }
+
     private String safe(String value) {
         return value == null ? "" : value;
     }
 }
-

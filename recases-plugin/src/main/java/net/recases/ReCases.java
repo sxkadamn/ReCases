@@ -25,6 +25,7 @@ import net.recases.services.ConfigService;
 import net.recases.services.ItemFactory;
 import net.recases.services.LeaderboardHologramService;
 import net.recases.services.MessageService;
+import net.recases.services.NetworkSyncService;
 import net.recases.services.RewardService;
 import net.recases.services.SchematicService;
 import net.recases.services.DiscordWebhookService;
@@ -68,6 +69,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     private DiscordWebhookService discordWebhookService;
     private OpeningResultService openingResultService;
     private UpdateService updateService;
+    private NetworkSyncService networkSyncService;
 
     @Override
     public void onEnable() {
@@ -91,7 +93,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         messageService = new MessageService(this, textFormatter);
         configService = new ConfigService(this);
         animationService = new AnimationService(this);
-        rewardService = new RewardService(this, textFormatter);
+        rewardService = new RewardService(this, textFormatter, itemFactory);
         storageService = new StorageService(this, keyCache);
         statsService = new StatsService(this);
         rewardAuditService = new RewardAuditService(this);
@@ -100,6 +102,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         caseService = new CaseService(this, entityRegistry, itemFactory, textFormatter, worldService);
         openingResultService = new OpeningResultService(this);
         updateService = new UpdateService(this);
+        networkSyncService = new NetworkSyncService(this, keyCache, statsService);
 
         reloadPluginState();
         registerEvents();
@@ -111,6 +114,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     @Override
     public void onDisable() {
         getServer().getServicesManager().unregister(ReCasesApi.class, this);
+        networkSyncService.close();
         leaderboardHologramService.close();
         caseService.clear();
         schematicService.close();
@@ -134,6 +138,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         caseService.reload();
         leaderboardHologramService.reload();
         updateService.reload();
+        networkSyncService.reload();
     }
 
     @Override
