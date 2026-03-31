@@ -18,7 +18,7 @@ import java.util.Set;
 
 public class ConfigService {
 
-    private static final int CURRENT_VERSION = 8;
+    private static final int CURRENT_VERSION = 9;
     private static final Set<String> KNOWN_ANIMATIONS = Set.of(
             "classic",
             "circle",
@@ -114,6 +114,11 @@ public class ConfigService {
             plugin.getConfig().set("settings.network-sync.poll-interval-seconds", 15);
             plugin.getConfig().set("settings.network-sync.sync-keys", true);
             plugin.getConfig().set("settings.network-sync.sync-stats", true);
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.metrics.bstats") == null) {
+            plugin.getConfig().set("settings.metrics.bstats.enabled", false);
+            plugin.getConfig().set("settings.metrics.bstats.plugin-id", 0);
         }
 
         if (plugin.getConfig().getConfigurationSection("settings.presets") == null) {
@@ -262,6 +267,11 @@ public class ConfigService {
             if (plugin.getConfig().getInt("settings.network-sync.poll-interval-seconds", 15) < 1) {
                 warnings.add("settings.network-sync.poll-interval-seconds must be at least 1.");
             }
+        }
+
+        if (plugin.getConfig().getBoolean("settings.metrics.bstats.enabled", false)
+                && plugin.getConfig().getInt("settings.metrics.bstats.plugin-id", 0) <= 0) {
+            warnings.add("bStats is enabled but settings.metrics.bstats.plugin-id is not set.");
         }
 
         if (plugin.getConfig().getString("settings.presets.folder", "presets").trim().isEmpty()) {

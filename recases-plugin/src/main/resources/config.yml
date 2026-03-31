@@ -1,6 +1,6 @@
 # Версия структуры конфига
 # Нужна плагину для автоматической миграции старых конфигов после обновления
-config-version: 8
+config-version: 9
 
 settings:
   schematics:
@@ -212,6 +212,13 @@ settings:
   presets:
     # Папка внутри plugins/ReCases для экспортов/импортов пресетов
     folder: presets
+
+  metrics:
+    bstats:
+      # Enable bStats after registering the plugin and setting a valid plugin id.
+      enabled: true
+      # Get the id from https://bstats.org/what-is-my-plugin-id
+      plugin-id: 30513
 
 console:
   yaml-migrated: 'Migrated keys.yml to %storage% storage.'

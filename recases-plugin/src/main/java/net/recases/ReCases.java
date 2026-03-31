@@ -20,6 +20,7 @@ import net.recases.placeholders.ReCasesExpansion;
 import net.recases.runtime.cache.KeyCache;
 import net.recases.runtime.registry.EntityRegistry;
 import net.recases.services.AnimationService;
+import net.recases.services.BStatsService;
 import net.recases.services.CaseService;
 import net.recases.services.ConfigService;
 import net.recases.services.ItemFactory;
@@ -63,6 +64,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     private RewardService rewardService;
     private StorageService storageService;
     private StatsService statsService;
+    private BStatsService bStatsService;
     private LeaderboardHologramService leaderboardHologramService;
     private CaseService caseService;
     private RewardAuditService rewardAuditService;
@@ -96,6 +98,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         rewardService = new RewardService(this, textFormatter, itemFactory);
         storageService = new StorageService(this, keyCache);
         statsService = new StatsService(this);
+        bStatsService = new BStatsService(this);
         rewardAuditService = new RewardAuditService(this);
         discordWebhookService = new DiscordWebhookService(this);
         leaderboardHologramService = new LeaderboardHologramService(this, textFormatter);
@@ -119,6 +122,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         caseService.clear();
         schematicService.close();
         cleanupResidualEntities();
+        bStatsService.close();
         statsService.close();
         storageService.close();
         rewardAuditService.close();
@@ -139,6 +143,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         leaderboardHologramService.reload();
         updateService.reload();
         networkSyncService.reload();
+        bStatsService.reload();
     }
 
     @Override
