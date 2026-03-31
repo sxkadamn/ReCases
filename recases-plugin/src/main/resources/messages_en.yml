@@ -19,6 +19,8 @@ messages:
   case-balance-after: '#a8dadcNew balance of #ffffff%player%#a8dadc: #ffffff%amount% #a8dadckey(s) of profile #ffffff%case%#a8dadc.'
   case-position-saved: '#80ed99Position of physical case #ffffff%instance% #80ed99was updated.'
   reload-complete: '#80ed99Config and case runtime were reloaded.'
+  update-available-player: '#ffd166ReCases update available: #ffffff%current% #ffd166→ #80ed99%latest% #a8dadc(%url%)'
+  update-downloaded-player: '#80ed99The new version was downloaded to #ffffff/plugins/update#80ed99. Restart the server.'
   no-keys: '#ff6b6bYou do not have any keys for this case profile.'
   case-busy: '#ff6b6bThis case is already being opened by another player.'
   case-opened-by-other: '#ff6b6bThis case is currently being opened by another player.'

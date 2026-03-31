@@ -14,6 +14,7 @@ import net.recases.gui.impl.MenuManager;
 import net.recases.listener.CaseListener;
 import net.recases.listener.OpeningGuardListener;
 import net.recases.listener.PluginHooksListener;
+import net.recases.listener.UpdateNotifierListener;
 import net.recases.protocollib.hologram.HologramLine;
 import net.recases.placeholders.ReCasesExpansion;
 import net.recases.runtime.cache.KeyCache;
@@ -32,6 +33,7 @@ import net.recases.services.RewardAuditService;
 import net.recases.services.StatsService;
 import net.recases.services.StorageService;
 import net.recases.services.TextFormatter;
+import net.recases.services.UpdateService;
 import net.recases.services.WorldService;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
@@ -40,6 +42,9 @@ import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
 
 public final class ReCases extends JavaPlugin implements PluginContext, ReCasesApi {
@@ -62,6 +67,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     private RewardAuditService rewardAuditService;
     private DiscordWebhookService discordWebhookService;
     private OpeningResultService openingResultService;
+    private UpdateService updateService;
 
     @Override
     public void onEnable() {
@@ -93,6 +99,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         leaderboardHologramService = new LeaderboardHologramService(this, textFormatter);
         caseService = new CaseService(this, entityRegistry, itemFactory, textFormatter, worldService);
         openingResultService = new OpeningResultService(this);
+        updateService = new UpdateService(this);
 
         reloadPluginState();
         registerEvents();
@@ -112,6 +119,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         storageService.close();
         rewardAuditService.close();
         discordWebhookService.close();
+        updateService.close();
     }
 
     public void reloadPluginState() {
@@ -125,6 +133,17 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         discordWebhookService.reload();
         caseService.reload();
         leaderboardHologramService.reload();
+        updateService.reload();
+    }
+
+    @Override
+    public void saveConfigUtf8() {
+        try {
+            Files.createDirectories(getDataFolder().toPath());
+            Files.writeString(getDataFolder().toPath().resolve("config.yml"), getConfig().saveToString(), StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to save config.yml in UTF-8", exception);
+        }
     }
 
     private void registerPlaceholderExpansion() {
@@ -140,6 +159,7 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         pluginManager.registerEvents(new RoundListener(this, entityRegistry), this);
         pluginManager.registerEvents(new MenuListener(this), this);
         pluginManager.registerEvents(new PluginHooksListener(this, animationService), this);
+        pluginManager.registerEvents(new UpdateNotifierListener(this, updateService), this);
     }
 
     private void registerCommands() {
@@ -225,6 +245,10 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
 
     public OpeningResultService getOpeningResults() {
         return openingResultService;
+    }
+
+    public UpdateService getUpdater() {
+        return updateService;
     }
 
     private void saveResourceIfMissing(String resourcePath) {

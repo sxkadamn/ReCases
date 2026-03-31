@@ -5,7 +5,10 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -15,7 +18,7 @@ import java.util.Set;
 
 public class ConfigService {
 
-    private static final int CURRENT_VERSION = 6;
+    private static final int CURRENT_VERSION = 7;
     private static final Set<String> KNOWN_ANIMATIONS = Set.of(
             "classic",
             "circle",
@@ -36,7 +39,12 @@ public class ConfigService {
     }
 
     public void reload() {
-        plugin.reloadConfig();
+        try {
+            plugin.reloadConfig();
+        } catch (RuntimeException exception) {
+            recoverBrokenConfig(exception);
+            plugin.reloadConfig();
+        }
         migrateIfNeeded();
         validate();
     }
@@ -91,9 +99,42 @@ public class ConfigService {
             plugin.getConfig().set("settings.webhooks.discord.notify-guaranteed", true);
         }
 
+        if (plugin.getConfig().getConfigurationSection("settings.updater") == null) {
+            plugin.getConfig().set("settings.updater.enabled", false);
+            plugin.getConfig().set("settings.updater.check-on-startup", true);
+            plugin.getConfig().set("settings.updater.notify-admins-on-join", true);
+            plugin.getConfig().set("settings.updater.auto-download", false);
+            plugin.getConfig().set("settings.updater.resource-id", 0);
+            plugin.getConfig().set("settings.updater.timeout-seconds", 10);
+            plugin.getConfig().set("settings.updater.download-url", "");
+        }
+
         migrateRewardActions();
         plugin.getConfig().set("config-version", CURRENT_VERSION);
-        plugin.saveConfig();
+        ((net.recases.app.PluginContext) plugin).saveConfigUtf8();
+    }
+
+    private void recoverBrokenConfig(RuntimeException cause) {
+        Path dataFolder = plugin.getDataFolder().toPath();
+        Path configPath = dataFolder.resolve("config.yml");
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        Path backupPath = dataFolder.resolve("config.invalid-" + timestamp + ".yml");
+
+        try {
+            Files.createDirectories(dataFolder);
+            if (Files.exists(configPath)) {
+                Files.move(configPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+            try (InputStream inputStream = plugin.getResource("config.yml")) {
+                if (inputStream == null) {
+                    throw new IOException("Default config.yml resource is missing");
+                }
+                Files.copy(inputStream, configPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+            plugin.getLogger().severe("config.yml was not valid UTF-8/YAML and has been replaced. Backup: " + backupPath.getFileName());
+        } catch (IOException ioException) {
+            throw new UncheckedIOException("Failed to recover broken config.yml", ioException);
+        }
     }
 
     private void validate() {
@@ -187,6 +228,19 @@ public class ConfigService {
                 }
 
                 validateLeaderboardView(warnings, hologramId, leaderboardHolograms.getConfigurationSection(hologramId));
+            }
+        }
+
+        if (plugin.getConfig().getBoolean("settings.updater.enabled", false)) {
+            int resourceId = plugin.getConfig().getInt("settings.updater.resource-id", 0);
+            String downloadUrl = plugin.getConfig().getString("settings.updater.download-url", "").trim();
+            if (resourceId <= 0) {
+                warnings.add("Updater is enabled but settings.updater.resource-id is not set.");
+            }
+            if (plugin.getConfig().getBoolean("settings.updater.auto-download", false)
+                    && resourceId <= 0
+                    && downloadUrl.isEmpty()) {
+                warnings.add("Updater auto-download is enabled but no resource-id or direct download-url is configured.");
             }
         }
 

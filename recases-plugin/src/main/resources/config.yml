@@ -1,6 +1,6 @@
 # Версия структуры конфига
 # Нужна плагину для автоматической миграции старых конфигов после обновления
-config-version: 5
+config-version: 7
 
 settings:
   schematics:
@@ -172,6 +172,33 @@ settings:
       username: root
       password: ''
       use-ssl: false
+  locale:
+    # Язык встроенных сообщений: ru или en
+    default: ru
+  webhooks:
+    discord:
+      # Вебхук уведомлений о редких/гарантированных наградах
+      enabled: false
+      url: ''
+      username: ReCases
+      avatar-url: ''
+      notify-rare: true
+      notify-guaranteed: true
+  updater:
+    # Проверка новых версий на Spigot
+    enabled: false
+    # Выполнять проверку при запуске и /cases reload
+    check-on-startup: true
+    # Показывать админам сообщение о новой версии при входе
+    notify-admins-on-join: true
+    # Если true, плагин скачает новый jar в папку /plugins/update
+    auto-download: false
+    # ID ресурса на Spigot (обязательно, если включен updater)
+    resource-id: 0
+    # Таймаут HTTP-запросов updater-а
+    timeout-seconds: 10
+    # Необязательная прямая ссылка на jar (если пусто, используется Spiget download endpoint)
+    download-url: ''
 
 console:
   yaml-migrated: 'Migrated keys.yml to %storage% storage.'

@@ -19,6 +19,8 @@ messages:
   case-balance-after: '#a8dadcТеперь у игрока #ffffff%player% #a8dadcбаланс: #ffffff%amount% #a8dadcключ(ей) профиля #ffffff%case%#a8dadc.'
   case-position-saved: '#80ed99Позиция физического кейса #ffffff%instance% #80ed99обновлена.'
   reload-complete: '#80ed99Конфиг и runtime кейсов перезагружены.'
+  update-available-player: '#ffd166Доступно обновление ReCases: #ffffff%current% #ffd166→ #80ed99%latest% #a8dadc(%url%)'
+  update-downloaded-player: '#80ed99Новая версия уже загружена в папку #ffffff/plugins/update#80ed99. Перезапустите сервер.'
   no-keys: '#ff6b6bУ вас нет ключей от этого профиля кейса.'
   case-busy: '#ff6b6bЭтот кейс уже открывает другой игрок.'
   case-opened-by-other: '#ff6b6bЭтот кейс сейчас открывает другой игрок.'
