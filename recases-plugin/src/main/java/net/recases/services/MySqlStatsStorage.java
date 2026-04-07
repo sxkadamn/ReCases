@@ -9,6 +9,9 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -38,8 +41,10 @@ final class MySqlStatsStorage {
                             "player_id VARCHAR(36) NOT NULL PRIMARY KEY," +
                             "player_name VARCHAR(32) NOT NULL," +
                             "total_opens INT NOT NULL," +
+                            "opens_today INT NOT NULL DEFAULT 0," +
                             "total_rare_wins INT NOT NULL," +
                             "total_guaranteed_wins INT NOT NULL," +
+                            "daily_date VARCHAR(16) NOT NULL DEFAULT ''," +
                             "last_reward_name TEXT NOT NULL," +
                             "last_reward_profile VARCHAR(64) NOT NULL" +
                             ")")) {
@@ -51,6 +56,8 @@ final class MySqlStatsStorage {
                             "player_id VARCHAR(36) NOT NULL," +
                             "profile_id VARCHAR(64) NOT NULL," +
                             "opens INT NOT NULL," +
+                            "opens_today INT NOT NULL DEFAULT 0," +
+                            "daily_date VARCHAR(16) NOT NULL DEFAULT ''," +
                             "rare_wins INT NOT NULL," +
                             "guaranteed_wins INT NOT NULL," +
                             "pity INT NOT NULL," +
@@ -59,6 +66,11 @@ final class MySqlStatsStorage {
                             ")")) {
                 profileStats.executeUpdate();
             }
+
+            ensureColumn(connection, "ALTER TABLE recases_player_stats ADD COLUMN opens_today INT NOT NULL DEFAULT 0");
+            ensureColumn(connection, "ALTER TABLE recases_player_stats ADD COLUMN daily_date VARCHAR(16) NOT NULL DEFAULT ''");
+            ensureColumn(connection, "ALTER TABLE recases_profile_stats ADD COLUMN opens_today INT NOT NULL DEFAULT 0");
+            ensureColumn(connection, "ALTER TABLE recases_profile_stats ADD COLUMN daily_date VARCHAR(16) NOT NULL DEFAULT ''");
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to initialize MySQL stats storage", exception);
         }
@@ -68,7 +80,7 @@ final class MySqlStatsStorage {
         Map<UUID, PlayerStatsRecord> result = new LinkedHashMap<>();
         try (Connection connection = openConnection()) {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT player_id, player_name, total_opens, total_rare_wins, total_guaranteed_wins, last_reward_name, last_reward_profile " +
+                    "SELECT player_id, player_name, total_opens, opens_today, total_rare_wins, total_guaranteed_wins, daily_date, last_reward_name, last_reward_profile " +
                             "FROM recases_player_stats");
                  ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
@@ -80,8 +92,10 @@ final class MySqlStatsStorage {
                     PlayerStatsRecord record = new PlayerStatsRecord(playerId);
                     record.setPlayerName(resultSet.getString("player_name"));
                     record.setTotalOpens(Math.max(0, resultSet.getInt("total_opens")));
+                    record.setTotalOpensToday(Math.max(0, resultSet.getInt("opens_today")));
                     record.setTotalRareWins(Math.max(0, resultSet.getInt("total_rare_wins")));
                     record.setTotalGuaranteedWins(Math.max(0, resultSet.getInt("total_guaranteed_wins")));
+                    record.setDailyDate(resultSet.getString("daily_date"));
                     record.setLastRewardName(resultSet.getString("last_reward_name"));
                     record.setLastRewardProfile(resultSet.getString("last_reward_profile"));
                     result.put(playerId, record);
@@ -89,7 +103,7 @@ final class MySqlStatsStorage {
             }
 
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT player_id, profile_id, opens, rare_wins, guaranteed_wins, pity, last_reward_name " +
+                    "SELECT player_id, profile_id, opens, opens_today, rare_wins, guaranteed_wins, pity, last_reward_name " +
                             "FROM recases_profile_stats");
                  ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
@@ -101,6 +115,7 @@ final class MySqlStatsStorage {
                     PlayerStatsRecord record = result.computeIfAbsent(playerId, PlayerStatsRecord::new);
                     PlayerStatsRecord.ProfileStatsRecord profile = record.getOrCreateProfile(resultSet.getString("profile_id"));
                     profile.setOpens(Math.max(0, resultSet.getInt("opens")));
+                    profile.setOpensToday(Math.max(0, resultSet.getInt("opens_today")));
                     profile.setRareWins(Math.max(0, resultSet.getInt("rare_wins")));
                     profile.setGuaranteedWins(Math.max(0, resultSet.getInt("guaranteed_wins")));
                     profile.setPity(Math.max(0, resultSet.getInt("pity")));
@@ -122,7 +137,7 @@ final class MySqlStatsStorage {
         PlayerStatsRecord record = null;
         try (Connection connection = openConnection()) {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT player_name, total_opens, total_rare_wins, total_guaranteed_wins, last_reward_name, last_reward_profile " +
+                    "SELECT player_name, total_opens, opens_today, total_rare_wins, total_guaranteed_wins, daily_date, last_reward_name, last_reward_profile " +
                             "FROM recases_player_stats WHERE player_id = ?")) {
                 statement.setString(1, playerId.toString());
                 try (ResultSet resultSet = statement.executeQuery()) {
@@ -130,8 +145,10 @@ final class MySqlStatsStorage {
                         record = new PlayerStatsRecord(playerId);
                         record.setPlayerName(resultSet.getString("player_name"));
                         record.setTotalOpens(Math.max(0, resultSet.getInt("total_opens")));
+                        record.setTotalOpensToday(Math.max(0, resultSet.getInt("opens_today")));
                         record.setTotalRareWins(Math.max(0, resultSet.getInt("total_rare_wins")));
                         record.setTotalGuaranteedWins(Math.max(0, resultSet.getInt("total_guaranteed_wins")));
+                        record.setDailyDate(resultSet.getString("daily_date"));
                         record.setLastRewardName(resultSet.getString("last_reward_name"));
                         record.setLastRewardProfile(resultSet.getString("last_reward_profile"));
                     }
@@ -139,7 +156,7 @@ final class MySqlStatsStorage {
             }
 
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT profile_id, opens, rare_wins, guaranteed_wins, pity, last_reward_name " +
+                    "SELECT profile_id, opens, opens_today, rare_wins, guaranteed_wins, pity, last_reward_name " +
                             "FROM recases_profile_stats WHERE player_id = ?")) {
                 statement.setString(1, playerId.toString());
                 try (ResultSet resultSet = statement.executeQuery()) {
@@ -150,6 +167,7 @@ final class MySqlStatsStorage {
 
                         PlayerStatsRecord.ProfileStatsRecord profile = record.getOrCreateProfile(resultSet.getString("profile_id"));
                         profile.setOpens(Math.max(0, resultSet.getInt("opens")));
+                        profile.setOpensToday(Math.max(0, resultSet.getInt("opens_today")));
                         profile.setRareWins(Math.max(0, resultSet.getInt("rare_wins")));
                         profile.setGuaranteedWins(Math.max(0, resultSet.getInt("guaranteed_wins")));
                         profile.setPity(Math.max(0, resultSet.getInt("pity")));
@@ -168,46 +186,67 @@ final class MySqlStatsStorage {
         int rareIncrement = reward.isRare() ? 1 : 0;
         int guaranteedIncrement = guaranteed ? 1 : 0;
         int initialPity = reward.isRare() ? 0 : 1;
+        String currentDate = LocalDate.now(ZoneId.systemDefault()).toString();
 
         try (Connection connection = openConnection()) {
             try (PreparedStatement playerUpsert = connection.prepareStatement(
-                    "INSERT INTO recases_player_stats (player_id, player_name, total_opens, total_rare_wins, total_guaranteed_wins, last_reward_name, last_reward_profile) " +
-                            "VALUES (?, ?, 1, ?, ?, ?, ?) " +
+                    "INSERT INTO recases_player_stats (player_id, player_name, total_opens, opens_today, total_rare_wins, total_guaranteed_wins, daily_date, last_reward_name, last_reward_profile) " +
+                            "VALUES (?, ?, 1, 1, ?, ?, ?, ?, ?) " +
                             "ON DUPLICATE KEY UPDATE " +
                             "player_name = VALUES(player_name), " +
                             "total_opens = total_opens + 1, " +
+                            "opens_today = CASE WHEN daily_date = VALUES(daily_date) THEN opens_today + 1 ELSE VALUES(opens_today) END, " +
                             "total_rare_wins = total_rare_wins + VALUES(total_rare_wins), " +
                             "total_guaranteed_wins = total_guaranteed_wins + VALUES(total_guaranteed_wins), " +
+                            "daily_date = VALUES(daily_date), " +
                             "last_reward_name = VALUES(last_reward_name), " +
                             "last_reward_profile = VALUES(last_reward_profile)")) {
                 playerUpsert.setString(1, player.getUniqueId().toString());
                 playerUpsert.setString(2, player.getName());
                 playerUpsert.setInt(3, rareIncrement);
                 playerUpsert.setInt(4, guaranteedIncrement);
-                playerUpsert.setString(5, reward.getName());
-                playerUpsert.setString(6, profileId.toLowerCase());
+                playerUpsert.setString(5, currentDate);
+                playerUpsert.setString(6, reward.getName());
+                playerUpsert.setString(7, profileId.toLowerCase());
                 playerUpsert.executeUpdate();
             }
 
             try (PreparedStatement profileUpsert = connection.prepareStatement(
-                    "INSERT INTO recases_profile_stats (player_id, profile_id, opens, rare_wins, guaranteed_wins, pity, last_reward_name) " +
-                            "VALUES (?, ?, 1, ?, ?, ?, ?) " +
+                    "INSERT INTO recases_profile_stats (player_id, profile_id, opens, opens_today, daily_date, rare_wins, guaranteed_wins, pity, last_reward_name) " +
+                            "VALUES (?, ?, 1, 1, ?, ?, ?, ?, ?) " +
                             "ON DUPLICATE KEY UPDATE " +
                             "opens = opens + 1, " +
+                            "opens_today = CASE WHEN daily_date = VALUES(daily_date) THEN opens_today + 1 ELSE VALUES(opens_today) END, " +
+                            "daily_date = VALUES(daily_date), " +
                             "rare_wins = rare_wins + VALUES(rare_wins), " +
                             "guaranteed_wins = guaranteed_wins + VALUES(guaranteed_wins), " +
                             "pity = CASE WHEN VALUES(rare_wins) > 0 THEN 0 ELSE pity + 1 END, " +
                             "last_reward_name = VALUES(last_reward_name)")) {
                 profileUpsert.setString(1, player.getUniqueId().toString());
                 profileUpsert.setString(2, profileId.toLowerCase());
-                profileUpsert.setInt(3, rareIncrement);
-                profileUpsert.setInt(4, guaranteedIncrement);
-                profileUpsert.setInt(5, initialPity);
-                profileUpsert.setString(6, reward.getName());
+                profileUpsert.setString(3, currentDate);
+                profileUpsert.setInt(4, rareIncrement);
+                profileUpsert.setInt(5, guaranteedIncrement);
+                profileUpsert.setInt(6, initialPity);
+                profileUpsert.setString(7, reward.getName());
                 profileUpsert.executeUpdate();
             }
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to record opening in MySQL stats storage", exception);
+        }
+    }
+
+    private void ensureColumn(Connection connection, String sql) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate(sql);
+        } catch (SQLException exception) {
+            String message = exception.getMessage() == null ? "" : exception.getMessage().toLowerCase();
+            if (message.contains("duplicate")
+                    || message.contains("exists")
+                    || message.contains("already exists")) {
+                return;
+            }
+            throw exception;
         }
     }
 

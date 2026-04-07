@@ -12,6 +12,8 @@ import org.bukkit.entity.Player;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -29,11 +31,13 @@ public class StatsService implements AutoCloseable {
     private final PluginContext plugin;
     private final File file;
     private final Map<UUID, PlayerStatsRecord> records = new LinkedHashMap<>();
+    private final Map<String, List<LeaderboardEntry>> leaderboardCache = new LinkedHashMap<>();
     private final ExecutorService writer = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "recases-stats-writer");
         thread.setDaemon(true);
         return thread;
     });
+    private final ZoneId statsZone = ZoneId.systemDefault();
     private MySqlStatsStorage mySqlStorage;
 
     public StatsService(PluginContext plugin) {
@@ -44,23 +48,29 @@ public class StatsService implements AutoCloseable {
     public synchronized void reload() {
         configureBackend();
         records.clear();
+        leaderboardCache.clear();
         if (mySqlStorage != null) {
             records.putAll(mySqlStorage.loadAll());
+            records.values().forEach(this::normalizeDaily);
             return;
         }
 
         loadFromYaml();
+        records.values().forEach(this::normalizeDaily);
     }
 
     public synchronized void recordOpening(Player player, String profileId, CaseItem reward, boolean guaranteed) {
         PlayerStatsRecord record = getOrCreateRecord(player.getUniqueId(), player.getName());
+        normalizeDaily(record);
         record.setPlayerName(player.getName());
         record.setTotalOpens(record.getTotalOpens() + 1);
+        record.setTotalOpensToday(record.getTotalOpensToday() + 1);
         record.setLastRewardName(reward.getName());
         record.setLastRewardProfile(profileId.toLowerCase(Locale.ROOT));
 
         PlayerStatsRecord.ProfileStatsRecord profile = record.getOrCreateProfile(profileId);
         profile.setOpens(profile.getOpens() + 1);
+        profile.setOpensToday(profile.getOpensToday() + 1);
         profile.setLastRewardName(reward.getName());
 
         if (reward.isRare()) {
@@ -75,6 +85,8 @@ public class StatsService implements AutoCloseable {
             record.setTotalGuaranteedWins(record.getTotalGuaranteedWins() + 1);
             profile.setGuaranteedWins(profile.getGuaranteedWins() + 1);
         }
+
+        invalidateCaches();
 
         if (mySqlStorage != null) {
             mySqlStorage.recordOpening(player, profileId, reward, guaranteed);
@@ -118,6 +130,12 @@ public class StatsService implements AutoCloseable {
         return profile == null ? "" : safe(profile.getLastRewardName());
     }
 
+    public synchronized String getLastRewardProfile(OfflinePlayer player) {
+        refreshPlayerFromRemote(player);
+        PlayerStatsRecord record = getRecord(player);
+        return record == null ? "" : safe(record.getLastRewardProfile());
+    }
+
     public synchronized int getOpens(OfflinePlayer player, String profileId) {
         refreshPlayerFromRemote(player);
         if (profileId == null || profileId.trim().isEmpty()) {
@@ -151,6 +169,22 @@ public class StatsService implements AutoCloseable {
         return profile == null ? 0 : profile.getGuaranteedWins();
     }
 
+    public synchronized int getOpensToday(OfflinePlayer player, String profileId) {
+        refreshPlayerFromRemote(player);
+        PlayerStatsRecord record = getRecord(player);
+        if (record == null) {
+            return 0;
+        }
+
+        normalizeDaily(record);
+        if (profileId == null || profileId.trim().isEmpty()) {
+            return record.getTotalOpensToday();
+        }
+
+        PlayerStatsRecord.ProfileStatsRecord profile = getProfileRecord(player, profileId);
+        return profile == null ? 0 : profile.getOpensToday();
+    }
+
     public synchronized int getGlobalOpens() {
         return records.values().stream().mapToInt(PlayerStatsRecord::getTotalOpens).sum();
     }
@@ -178,7 +212,7 @@ public class StatsService implements AutoCloseable {
 
     public synchronized List<LeaderboardEntry> getLeaderboard(LeaderboardType type, String profileId, int limit) {
         int normalizedLimit = Math.max(1, limit);
-        return records.values().stream()
+        List<LeaderboardEntry> cached = leaderboardCache.computeIfAbsent(buildLeaderboardCacheKey(type, profileId), key -> records.values().stream()
                 .map(record -> {
                     int value = getValue(record, type, profileId);
                     if (value <= 0) {
@@ -191,6 +225,8 @@ public class StatsService implements AutoCloseable {
                 .filter(entry -> entry != null)
                 .sorted(Comparator.comparingInt(LeaderboardEntry::getValue).reversed()
                         .thenComparing(LeaderboardEntry::getPlayerName, String.CASE_INSENSITIVE_ORDER))
+                .collect(Collectors.toList()));
+        return cached.stream()
                 .limit(normalizedLimit)
                 .collect(Collectors.toList());
     }
@@ -264,16 +300,19 @@ public class StatsService implements AutoCloseable {
             PlayerStatsRecord record = new PlayerStatsRecord(playerId);
             record.setPlayerName(config.getString(basePath + ".name", playerId.toString()));
             record.setTotalOpens(Math.max(0, config.getInt(basePath + ".totals.opens", 0)));
+            record.setTotalOpensToday(Math.max(0, config.getInt(basePath + ".totals.opens-today", 0)));
             record.setTotalRareWins(Math.max(0, config.getInt(basePath + ".totals.rare-wins", 0)));
             record.setTotalGuaranteedWins(Math.max(0, config.getInt(basePath + ".totals.guaranteed-wins", 0)));
             record.setLastRewardName(config.getString(basePath + ".last-reward.name", ""));
             record.setLastRewardProfile(config.getString(basePath + ".last-reward.profile", ""));
+            record.setDailyDate(config.getString(basePath + ".daily-date", ""));
 
             if (config.getConfigurationSection(basePath + ".profiles") != null) {
                 for (String profileId : config.getConfigurationSection(basePath + ".profiles").getKeys(false)) {
                     PlayerStatsRecord.ProfileStatsRecord profile = record.getOrCreateProfile(profileId);
                     String profilePath = basePath + ".profiles." + profileId;
                     profile.setOpens(Math.max(0, config.getInt(profilePath + ".opens", 0)));
+                    profile.setOpensToday(Math.max(0, config.getInt(profilePath + ".opens-today", 0)));
                     profile.setRareWins(Math.max(0, config.getInt(profilePath + ".rare-wins", 0)));
                     profile.setGuaranteedWins(Math.max(0, config.getInt(profilePath + ".guaranteed-wins", 0)));
                     profile.setPity(Math.max(0, config.getInt(profilePath + ".pity", 0)));
@@ -290,6 +329,7 @@ public class StatsService implements AutoCloseable {
         if (record == null) {
             record = new PlayerStatsRecord(playerId);
             record.setPlayerName(playerName == null || playerName.trim().isEmpty() ? playerId.toString() : playerName);
+            record.setDailyDate(currentStatsDate());
             records.put(playerId, record);
         }
         return record;
@@ -355,18 +395,22 @@ public class StatsService implements AutoCloseable {
 
         YamlConfiguration config = new YamlConfiguration();
         for (PlayerStatsRecord record : records.values()) {
+            normalizeDaily(record);
             String basePath = "players." + record.getPlayerId();
             config.set(basePath + ".name", record.getPlayerName());
             config.set(basePath + ".totals.opens", record.getTotalOpens());
+            config.set(basePath + ".totals.opens-today", record.getTotalOpensToday());
             config.set(basePath + ".totals.rare-wins", record.getTotalRareWins());
             config.set(basePath + ".totals.guaranteed-wins", record.getTotalGuaranteedWins());
             config.set(basePath + ".last-reward.name", record.getLastRewardName());
             config.set(basePath + ".last-reward.profile", record.getLastRewardProfile());
+            config.set(basePath + ".daily-date", record.getDailyDate());
 
             for (Map.Entry<String, PlayerStatsRecord.ProfileStatsRecord> entry : record.getProfileStats().entrySet()) {
                 String profilePath = basePath + ".profiles." + entry.getKey();
                 PlayerStatsRecord.ProfileStatsRecord profile = entry.getValue();
                 config.set(profilePath + ".opens", profile.getOpens());
+                config.set(profilePath + ".opens-today", profile.getOpensToday());
                 config.set(profilePath + ".rare-wins", profile.getRareWins());
                 config.set(profilePath + ".guaranteed-wins", profile.getGuaranteedWins());
                 config.set(profilePath + ".pity", profile.getPity());
@@ -398,10 +442,36 @@ public class StatsService implements AutoCloseable {
         if (remote.getPlayerName() == null || remote.getPlayerName().trim().isEmpty()) {
             remote.setPlayerName(player.getName() == null ? player.getUniqueId().toString() : player.getName());
         }
+        normalizeDaily(remote);
         records.put(player.getUniqueId(), remote);
     }
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private void invalidateCaches() {
+        leaderboardCache.clear();
+    }
+
+    private String buildLeaderboardCacheKey(LeaderboardType type, String profileId) {
+        return type.getId() + ":" + (profileId == null ? "" : profileId.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private void normalizeDaily(PlayerStatsRecord record) {
+        String today = currentStatsDate();
+        if (today.equals(record.getDailyDate())) {
+            return;
+        }
+
+        record.setDailyDate(today);
+        record.setTotalOpensToday(0);
+        for (PlayerStatsRecord.ProfileStatsRecord profile : record.getProfileStats().values()) {
+            profile.setOpensToday(0);
+        }
+    }
+
+    private String currentStatsDate() {
+        return LocalDate.now(statsZone).toString();
     }
 }

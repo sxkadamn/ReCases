@@ -1,9 +1,12 @@
 package net.recases.commands;
 
 import net.recases.app.PluginContext;
+import net.recases.domain.CaseProfile;
 import net.recases.gui.create.CaseEditorGUI;
+import net.recases.management.CaseItem;
 import net.recases.runtime.CaseRuntime;
 import net.recases.services.MessageService;
+import net.recases.services.RewardAuditService;
 import net.recases.stats.LeaderboardEntry;
 import net.recases.stats.LeaderboardType;
 import org.bukkit.Bukkit;
@@ -19,18 +22,28 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Random;
+import java.util.UUID;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.stream.Collectors;
 
 public class CaseCommands implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUBCOMMANDS = Arrays.asList(
             "help", "list", "instances", "keys", "give", "take", "setamount", "set", "reload", "top",
-            "createprofile", "deleteprofile", "createinstance", "deleteinstance", "setprofileanimation", "setinstanceanimation", "edit", "preset"
+            "createprofile", "deleteprofile", "createinstance", "deleteinstance", "setprofileanimation", "setinstanceanimation", "edit", "preset",
+            "testanim", "simulate", "audit"
     );
     private static final List<String> TOP_TYPES = Arrays.asList("opens", "rare", "guaranteed");
     private static final List<String> PRESET_ACTIONS = Arrays.asList("list", "export", "import");
+    private static final DateTimeFormatter AUDIT_TIME_FORMAT = DateTimeFormatter.ofPattern("dd.MM HH:mm").withZone(ZoneId.systemDefault());
 
     private final PluginContext plugin;
     private final MessageService messages;
@@ -54,6 +67,9 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
             messages.send(sender, "messages.help-top", "#ffd166/%label% top <opens|rare|guaranteed> [profile] [limit] #a8dadc- показать таблицы лидеров", "%label%", label);
             messages.send(sender, "messages.help-editor", "#ffd166/%label% edit <profile> #a8dadc- открыть редактор наград", "%label%", label);
             messages.send(sender, "messages.help-preset", "#ffd166/%label% preset <list|export|import> ... #a8dadc- работа с пресетами", "%label%", label);
+            messages.send(sender, "messages.help-testanim", "#ffd166/%label% testanim <animation> [profile] [instance] #a8dadc- тест анимации", "%label%", label);
+            messages.send(sender, "messages.help-simulate", "#ffd166/%label% simulate <profile> <opens> #a8dadc- симулятор дропа", "%label%", label);
+            messages.send(sender, "messages.help-audit", "#ffd166/%label% audit [player] [limit] #a8dadc- журнал наград", "%label%", label);
             return true;
         }
 
@@ -96,6 +112,12 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 return openEditor(sender, args);
             case "preset":
                 return handlePreset(sender, args);
+            case "testanim":
+                return runAnimationTest(sender, args);
+            case "simulate":
+                return simulateDrops(sender, args);
+            case "audit":
+                return showAudit(sender, args);
             default:
                 messages.send(sender, "messages.command-unknown", "Неизвестная подкоманда.");
                 return true;
@@ -421,6 +443,157 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         }
     }
 
+    private boolean runAnimationTest(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            messages.send(sender, "messages.player-only", "This command is only available to players.");
+            return true;
+        }
+        if (args.length < 2) {
+            messages.send(sender, "messages.usage-testanim", "/cases testanim <animation> [profile] [instance]");
+            return true;
+        }
+
+        String animationId = args[1].toLowerCase(Locale.ROOT);
+        if (!plugin.getAnimations().isRegistered(animationId)) {
+            messages.send(sender, "messages.command-unknown", "Unknown animation.");
+            return true;
+        }
+
+        String profileId = args.length >= 3 ? args[2].toLowerCase(Locale.ROOT) : firstProfileId();
+        if (profileId.isEmpty() || !plugin.getCaseService().hasProfile(profileId)) {
+            messages.send(sender, "messages.case-not-found", "Case profile '%case%' was not found.", "%case%", profileId.isEmpty() ? "<none>" : profileId);
+            return true;
+        }
+
+        CaseRuntime runtime = args.length >= 4
+                ? plugin.getCaseService().getRuntime(args[3].toLowerCase(Locale.ROOT))
+                : findNearestRuntime(player);
+        if (runtime == null) {
+            messages.send(sender, "messages.instance-not-found", "Case instance '%instance%' was not found.", "%instance%", args.length >= 4 ? args[3] : "nearest");
+            return true;
+        }
+
+        return plugin.getCaseService().beginTestOpening(player, runtime, profileId, animationId);
+    }
+
+    private boolean simulateDrops(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            messages.send(sender, "messages.usage-simulate", "/cases simulate <profile> <opens>");
+            return true;
+        }
+
+        String profileId = args[1].toLowerCase(Locale.ROOT);
+        CaseProfile profile = plugin.getCaseService().getProfile(profileId);
+        if (profile == null) {
+            messages.send(sender, "messages.case-not-found", "Case profile '%case%' was not found.", "%case%", profileId);
+            return true;
+        }
+
+        int opens;
+        try {
+            opens = Math.max(1, Math.min(100000, Integer.parseInt(args[2])));
+        } catch (NumberFormatException exception) {
+            messages.send(sender, "messages.amount-invalid", "Amount must be a number.");
+            return true;
+        }
+
+        Random random = new Random();
+        Map<String, Integer> rewardCounts = new LinkedHashMap<>();
+        int rareWins = 0;
+        int guaranteedHits = 0;
+        int pity = 0;
+        for (int i = 0; i < opens; i++) {
+            boolean guaranteed = profile.getGuaranteeAfterOpens() > 0
+                    && profile.hasRareRewards()
+                    && pity + 1 >= profile.getGuaranteeAfterOpens();
+            CaseItem reward = guaranteed ? profile.pickReward(random, true) : profile.pickReward(random);
+            if (reward == null) {
+                continue;
+            }
+
+            rewardCounts.merge(reward.getName(), 1, Integer::sum);
+            if (reward.isRare()) {
+                rareWins++;
+                pity = 0;
+            } else {
+                pity++;
+            }
+            if (guaranteed) {
+                guaranteedHits++;
+            }
+        }
+
+        messages.send(sender, "messages.simulate-header", "#74c0fcSimulation for #ffffff%profile% #74c0fc(%opens% opens)", "%profile%", profileId, "%opens%", String.valueOf(opens));
+        messages.send(sender, "messages.simulate-summary", "#a8dadcRare wins: #ffffff%rare% #a8dadcGuaranteed hits: #ffffff%guaranteed%", "%rare%", String.valueOf(rareWins), "%guaranteed%", String.valueOf(guaranteedHits));
+        rewardCounts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()))
+                .limit(5)
+                .forEach(entry -> messages.send(sender, "messages.simulate-line", "#ffffff%reward% #ffd166- %count%", "%reward%", entry.getKey(), "%count%", String.valueOf(entry.getValue())));
+        return true;
+    }
+
+    private boolean showAudit(CommandSender sender, String[] args) {
+        OfflinePlayer target = null;
+        int limit = 10;
+
+        if (args.length >= 2 && !isInteger(args[1])) {
+            target = findPlayer(args[1]);
+            if (target == null) {
+                messages.send(sender, "messages.player-not-found", "Player not found.");
+                return true;
+            }
+        } else if (args.length >= 2) {
+            limit = parsePositiveInt(args[1], 10);
+        }
+
+        if (args.length >= 3) {
+            limit = parsePositiveInt(args[2], limit);
+        }
+
+        List<RewardAuditService.AuditEntry> entries = plugin.getRewardAudit().getRecentEntries(target == null ? null : target.getUniqueId(), limit);
+        if (entries.isEmpty()) {
+            messages.send(sender, "messages.top-empty", "No audit data yet.");
+            return true;
+        }
+
+        messages.send(sender, "messages.audit-header", "#74c0fcReward audit (%count%)", "%count%", String.valueOf(entries.size()));
+        for (RewardAuditService.AuditEntry entry : entries) {
+            messages.send(sender,
+                    "messages.audit-line",
+                    "#a8dadc[%time%] #ffffff%player% #ffd166-> %reward% #a8dadccase=%case% pity=%pity% tx=%tx% server=%server%",
+                    "%time%", AUDIT_TIME_FORMAT.format(Instant.ofEpochMilli(entry.getCreatedAt())),
+                    "%player%", entry.getPlayerName(),
+                    "%reward%", entry.getRewardName(),
+                    "%case%", entry.getCaseProfile(),
+                    "%pity%", String.valueOf(entry.getPityBefore()),
+                    "%tx%", shortTransaction(entry.getTransactionId()),
+                    "%server%", entry.getServerId().isEmpty() ? "default" : entry.getServerId()
+            );
+        }
+        return true;
+    }
+
+    private CaseRuntime findNearestRuntime(Player player) {
+        if (player == null || player.getWorld() == null) {
+            return null;
+        }
+
+        return plugin.getCaseService().getRuntimes().stream()
+                .filter(runtime -> runtime.getLocation().getWorld() != null && runtime.getLocation().getWorld().equals(player.getWorld()))
+                .min(Comparator.comparingDouble(runtime -> runtime.getLocation().distanceSquared(player.getLocation())))
+                .orElse(null);
+    }
+
+    private String firstProfileId() {
+        List<String> profiles = plugin.getCaseService().getProfileIds();
+        return profiles.isEmpty() ? "" : profiles.get(0);
+    }
+
+    private String shortTransaction(UUID transactionId) {
+        String value = transactionId == null ? "" : transactionId.toString();
+        return value.length() <= 8 ? value : value.substring(0, 8);
+    }
+
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (!sender.hasPermission("recases.admin")) {
@@ -493,6 +666,40 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 if (args.length == 4) {
                     return complete(plugin.getCaseService().getProfileIds(), args[3]);
                 }
+            }
+        }
+        if ("testanim".equals(subcommand)) {
+            if (args.length == 2) {
+                return complete(plugin.getAnimations().getRegisteredIds(), args[1]);
+            }
+            if (args.length == 3) {
+                return complete(plugin.getCaseService().getProfileIds(), args[2]);
+            }
+            if (args.length == 4) {
+                return complete(plugin.getCaseService().getRuntimeIds(), args[3]);
+            }
+        }
+        if ("simulate".equals(subcommand)) {
+            if (args.length == 2) {
+                return complete(plugin.getCaseService().getProfileIds(), args[1]);
+            }
+            if (args.length == 3) {
+                return complete(Arrays.asList("1000", "5000", "10000"), args[2]);
+            }
+        }
+        if ("audit".equals(subcommand)) {
+            if (args.length == 2) {
+                List<String> values = new ArrayList<>(Arrays.stream(Bukkit.getOfflinePlayers())
+                        .map(OfflinePlayer::getName)
+                        .filter(name -> name != null && !name.isEmpty())
+                        .distinct()
+                        .sorted()
+                        .collect(Collectors.toList()));
+                values.addAll(Arrays.asList("10", "20", "50"));
+                return complete(values, args[1]);
+            }
+            if (args.length == 3) {
+                return complete(Arrays.asList("10", "20", "50"), args[2]);
             }
         }
         return Collections.emptyList();

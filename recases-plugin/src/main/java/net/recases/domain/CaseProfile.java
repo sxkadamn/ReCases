@@ -61,6 +61,19 @@ public class CaseProfile {
         return Collections.unmodifiableList(rewards);
     }
 
+    public CaseItem getReward(String rewardId) {
+        if (rewardId == null || rewardId.trim().isEmpty()) {
+            return null;
+        }
+
+        for (CaseItem reward : rewards) {
+            if (rewardId.equalsIgnoreCase(reward.getId())) {
+                return reward;
+            }
+        }
+        return null;
+    }
+
     public boolean hasRewards() {
         return !rewards.isEmpty();
     }

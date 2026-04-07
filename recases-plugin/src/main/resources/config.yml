@@ -1,8 +1,10 @@
 # Версия структуры конфига
 # Нужна плагину для автоматической миграции старых конфигов после обновления
-config-version: 9
+config-version: 11
 
 settings:
+  # Unique server id used in audit/webhooks when several servers share one database
+  server-id: default
   schematics:
     # Общий переключатель сцен из .schem/.schematic файлов для анимаций
     enabled: false
@@ -42,6 +44,20 @@ settings:
       particles: 1.0
       # Масштабирует громкость звука в сценах открытия и объявления победителя
       sound: 1.0
+    performance:
+      # Быстрый профиль анимаций: pretty, balanced, lite
+      profile: balanced
+      # Автоматически снижать нагрузку анимаций при нескольких одновременных открытиях
+      adaptive-load: true
+    dynamic-selection:
+      # Automatically swap heavy animations to lighter ones when player is far away or server is under load
+      enabled: true
+      max-player-distance: 24.0
+      active-openings-threshold: 4
+      min-tps: 18.5
+      distant-fallback: classic
+      overload-fallback: classic
+      medium-overload-fallback: circle
     winner-item:
       # Амплитуда горизонтальной тряски для парящего предмета награды
       shake-amplitude: 0.06
@@ -184,6 +200,23 @@ settings:
       avatar-url: ''
       notify-rare: true
       notify-guaranteed: true
+      embed:
+        rare-color: 7929855
+        guaranteed-color: 16766720
+        default-color: 7631988
+        # Optional thumbnail URL with placeholders:
+        # %player% %player_uuid% %case% %instance% %animation% %reward% %reward_id% %transaction% %server%
+        thumbnail-url: ''
+      links:
+        docs:
+          label: Open Docs
+          url: 'https://example.com/cases/%case%'
+        audit:
+          label: Open Audit
+          url: 'https://example.com/audit/%transaction%'
+  opening-recovery:
+    # grant-if-possible = deliver saved pending rewards on next join, refund = always return the key
+    mode: grant-if-possible
   updater:
     # Проверка новых версий на Spigot
     enabled: false

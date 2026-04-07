@@ -10,10 +10,12 @@ public class PlayerStatsRecord {
     private final Map<String, ProfileStatsRecord> profileStats = new LinkedHashMap<>();
     private String playerName;
     private int totalOpens;
+    private int totalOpensToday;
     private int totalRareWins;
     private int totalGuaranteedWins;
     private String lastRewardName = "";
     private String lastRewardProfile = "";
+    private String dailyDate = "";
 
     public PlayerStatsRecord(UUID playerId) {
         this.playerId = playerId;
@@ -37,6 +39,14 @@ public class PlayerStatsRecord {
 
     public void setTotalOpens(int totalOpens) {
         this.totalOpens = totalOpens;
+    }
+
+    public int getTotalOpensToday() {
+        return totalOpensToday;
+    }
+
+    public void setTotalOpensToday(int totalOpensToday) {
+        this.totalOpensToday = totalOpensToday;
     }
 
     public int getTotalRareWins() {
@@ -71,6 +81,14 @@ public class PlayerStatsRecord {
         this.lastRewardProfile = lastRewardProfile;
     }
 
+    public String getDailyDate() {
+        return dailyDate;
+    }
+
+    public void setDailyDate(String dailyDate) {
+        this.dailyDate = dailyDate;
+    }
+
     public Map<String, ProfileStatsRecord> getProfileStats() {
         return profileStats;
     }
@@ -91,6 +109,7 @@ public class PlayerStatsRecord {
 
     public static class ProfileStatsRecord {
         private int opens;
+        private int opensToday;
         private int rareWins;
         private int guaranteedWins;
         private int pity;
@@ -102,6 +121,14 @@ public class PlayerStatsRecord {
 
         public void setOpens(int opens) {
             this.opens = opens;
+        }
+
+        public int getOpensToday() {
+            return opensToday;
+        }
+
+        public void setOpensToday(int opensToday) {
+            this.opensToday = opensToday;
         }
 
         public int getRareWins() {

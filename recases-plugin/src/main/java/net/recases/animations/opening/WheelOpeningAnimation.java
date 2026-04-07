@@ -10,35 +10,90 @@ import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Lidded;
 import org.bukkit.block.data.Directional;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class WheelOpeningAnimation implements OpeningAnimation {
 
     public static final String WHEEL_ENTITY_METADATA = "case_wheel_item";
 
+    private static final double VISUAL_HEIGHT_OFFSET = 1.15D;
+
     private final PluginContext plugin;
     private final Player player;
     private final CaseRuntime runtime;
+    private final AnimationPerformance performance;
+    private final int motionInterval;
+    private final int prizeCount;
+    private final int spawnIntervalTicks;
+    private final double radius;
+    private final double wheelCenterYOffset;
+    private final double maxSpeed;
+    private final double minSpeed;
+    private final double speedFade;
+    private final double minTotalRotation;
+    private final double settleDegrees;
+    private final String wheelAxis;
+    private final Particle trailParticle;
+    private final Particle winParticle;
+    private final Particle vanishParticle;
+    private final Particle.DustOptions dustOptions;
+    private final float caseYaw;
 
     public WheelOpeningAnimation(PluginContext plugin, Player player, CaseRuntime runtime) {
         this.plugin = plugin;
         this.player = player;
         this.runtime = runtime;
+        this.performance = AnimationPerformance.create(plugin);
+        this.motionInterval = performance.motionInterval();
+        this.prizeCount = resolvePrizeCount();
+        this.spawnIntervalTicks = Math.max(1, plugin.getConfig().getInt("settings.animations.wheel.spawn-interval-ticks", 4));
+        this.radius = Math.max(0.8D, plugin.getConfig().getDouble("settings.animations.wheel.radius", 2.0D));
+        double yOffset = plugin.getConfig().getDouble("settings.animations.wheel.y-offset", 1.1D);
+        this.wheelCenterYOffset = Math.max(0.2D, yOffset - 0.75D);
+        this.maxSpeed = Math.max(2.0D, plugin.getConfig().getDouble("settings.animations.wheel.max-speed", 16.0D));
+        this.minSpeed = Math.max(0.8D, plugin.getConfig().getDouble("settings.animations.wheel.min-speed", 2.0D));
+        this.speedFade = Math.max(0.01D, plugin.getConfig().getDouble("settings.animations.wheel.speed-fade", 0.09D));
+        this.minTotalRotation = Math.max(180.0D, plugin.getConfig().getDouble("settings.animations.wheel.min-total-rotation", 540.0D));
+        this.settleDegrees = plugin.getConfig().getDouble("settings.animations.wheel.settle-degrees", 270.0D);
+        this.wheelAxis = plugin.getConfig().getString("settings.animations.wheel.axis", "z").trim().toLowerCase(java.util.Locale.ROOT);
+
+        OpeningSession session = runtime.getSession();
+        boolean premium = session != null
+                && session.getFinalReward() != null
+                && (session.getFinalReward().isRare() || session.isGuaranteedReward());
+        this.trailParticle = ParticleAnimationSupport.resolveParticle(
+                plugin.getConfig().getString("settings.animations.wheel.particle"),
+                premium ? Particle.DUST : Particle.FLAME
+        );
+        this.winParticle = ParticleAnimationSupport.resolveParticle(
+                plugin.getConfig().getString("settings.animations.wheel.win-particle"),
+                premium ? Particle.DRAGON_BREATH : Particle.SMOKE
+        );
+        this.vanishParticle = ParticleAnimationSupport.resolveParticle(
+                plugin.getConfig().getString("settings.animations.wheel.vanish-particle"),
+                premium ? Particle.GLOW : Particle.SMOKE
+        );
+        this.dustOptions = new Particle.DustOptions(
+                Color.fromRGB(
+                        clampColor(plugin.getConfig().getInt("settings.animations.wheel.color.red", 101)),
+                        clampColor(plugin.getConfig().getInt("settings.animations.wheel.color.green", 20)),
+                        clampColor(plugin.getConfig().getInt("settings.animations.wheel.color.blue", 5))
+                ),
+                1.0F
+        );
+        this.caseYaw = resolveCaseYaw();
     }
 
     @Override
@@ -51,7 +106,7 @@ public class WheelOpeningAnimation implements OpeningAnimation {
         runtime.removeHologram();
         hideCaseBlock();
         player.playSound(runtime.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, volume(1.0F), 0.85F);
-        startPulse(session);
+        startPulse();
 
         new BukkitRunnable() {
             @Override
@@ -62,7 +117,7 @@ public class WheelOpeningAnimation implements OpeningAnimation {
                 }
                 startWheel(session);
             }
-        }.runTaskLater(plugin, 12L);
+        }.runTaskLater(plugin, performance.cadence(12L));
         return true;
     }
 
@@ -73,7 +128,7 @@ public class WheelOpeningAnimation implements OpeningAnimation {
         }
 
         openChest();
-        Location center = runtime.getLocation().clone().add(0.5, wheelCenterYOffset(), 0.5);
+        Location center = runtime.getLocation().clone().add(0.5D, wheelCenterYOffset, 0.5D);
         List<WheelSlot> slots = buildSlots(session, center);
         if (slots.isEmpty()) {
             plugin.getCaseService().abortOpening(runtime, true);
@@ -84,16 +139,15 @@ public class WheelOpeningAnimation implements OpeningAnimation {
     }
 
     private List<WheelSlot> buildSlots(OpeningSession session, Location center) {
-        List<WheelSlot> slots = new ArrayList<>();
-        int count = Math.max(6, plugin.getConfig().getInt("settings.animations.wheel.prize-count", 8));
-        double angleStep = 360.0D / count;
-        int winnerIndex = ThreadLocalRandom.current().nextInt(count);
+        List<WheelSlot> slots = new ArrayList<>(prizeCount);
+        double angleStep = 360.0D / prizeCount;
+        int winnerIndex = ThreadLocalRandom.current().nextInt(prizeCount);
 
-        for (int i = 0; i < count; i++) {
-            boolean winner = i == winnerIndex;
+        for (int index = 0; index < prizeCount; index++) {
+            boolean winner = index == winnerIndex;
             CaseItem prize = winner ? session.getFinalReward() : fallbackPrize(session);
             ArmorStand stand = createWheelStand(session, prize, center);
-            slots.add(new WheelSlot(stand, prize, i * angleStep, winner));
+            slots.add(new WheelSlot(stand, index * angleStep, winner));
         }
         return slots;
     }
@@ -117,19 +171,18 @@ public class WheelOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                WheelSlot slot = slots.get(index++);
-                animateSlotSpawn(session, center, slot);
+                animateSlotSpawn(session, center, slots.get(index++));
             }
-        }.runTaskTimer(plugin, 0L, spawnIntervalTicks());
+        }.runTaskTimer(plugin, 0L, performance.cadence(spawnIntervalTicks));
     }
 
     private void animateSlotSpawn(OpeningSession session, Location center, WheelSlot slot) {
-        Location spawn = center.clone().add(0.0, 0.15, 0.0);
-        slot.stand.teleport(oriented(spawn));
+        Location spawn = oriented(center.clone().add(0.0D, 0.15D, 0.0D));
+        slot.stand.teleport(spawn);
         slot.stand.getWorld().playSound(spawn, Sound.ITEM_ARMOR_EQUIP_GENERIC, volume(0.8F), 1.1F);
 
         new BukkitRunnable() {
-            private int tick;
+            private int elapsed;
 
             @Override
             public void run() {
@@ -138,11 +191,11 @@ public class WheelOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                tick++;
-                double progress = Math.min(1.0D, tick / 8.0D);
-                Location target = orbitPosition(center, slot.baseAngle, radius() * progress);
+                elapsed += motionInterval;
+                double progress = Math.min(1.0D, elapsed / 8.0D);
+                Location target = orbitPosition(center, slot.baseAngle, radius * progress);
                 slot.stand.teleport(target);
-                spawnOrbitParticle(visualItemLocation(target), trailParticle(session), 2);
+                spawnOrbitParticle(visualItemLocation(target), trailParticle, 2);
 
                 if (progress >= 1.0D) {
                     Location visualTarget = visualItemLocation(target);
@@ -150,7 +203,7 @@ public class WheelOpeningAnimation implements OpeningAnimation {
                     cancel();
                 }
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+        }.runTaskTimer(plugin, 0L, motionInterval);
     }
 
     private void spinWheel(OpeningSession session, Location center, List<WheelSlot> slots) {
@@ -158,8 +211,8 @@ public class WheelOpeningAnimation implements OpeningAnimation {
 
         new BukkitRunnable() {
             private double angleOffset;
-            private double speed = maxSpeed();
-            private long tick;
+            private double speed = maxSpeed;
+            private int elapsed;
 
             @Override
             public void run() {
@@ -170,36 +223,36 @@ public class WheelOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                tick++;
-                angleOffset += speed;
+                elapsed += motionInterval;
+                angleOffset += speed * motionInterval;
 
                 for (WheelSlot slot : slots) {
                     slot.currentAngle = normalizeDegrees(slot.baseAngle + angleOffset);
-                    Location target = orbitPosition(center, slot.currentAngle, radius());
+                    Location target = orbitPosition(center, slot.currentAngle, radius);
                     slot.stand.teleport(target);
-                    spawnOrbitParticle(visualItemLocation(target), trailParticle(session), 1);
+                    spawnOrbitParticle(visualItemLocation(target), trailParticle, 1);
                 }
 
-                if (tick % 2L == 0L) {
-                    runtime.getLocation().getWorld().playSound(runtime.getLocation(), Sound.UI_BUTTON_CLICK, volume(0.55F), 0.85F + (float) Math.min(speed / Math.max(1.0D, maxSpeed()), 0.8D));
+                if ((elapsed / motionInterval) % 2 == 0) {
+                    runtime.getLocation().getWorld().playSound(runtime.getLocation(), Sound.UI_BUTTON_CLICK, volume(0.55F), 0.85F + (float) Math.min(speed / Math.max(1.0D, maxSpeed), 0.8D));
                 }
 
                 speed = nextSpeed(speed, angleOffset);
-                if (speed > minSpeed()) {
+                if (speed > minSpeed) {
                     return;
                 }
 
-                if (distanceToSettle(winner.currentAngle) > Math.max(4.0D, minSpeed() * 2.0D)) {
+                if (distanceToSettle(winner.currentAngle) > Math.max(4.0D, minSpeed * 2.0D)) {
                     return;
                 }
 
                 cancel();
-                celebrateWinner(session, center, winner, slots);
+                celebrateWinner(session, winner, slots);
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+        }.runTaskTimer(plugin, 0L, motionInterval);
     }
 
-    private void celebrateWinner(OpeningSession session, Location center, WheelSlot winner, List<WheelSlot> slots) {
+    private void celebrateWinner(OpeningSession session, WheelSlot winner, List<WheelSlot> slots) {
         if (!isActive(session) || runtime.getLocation().getWorld() == null) {
             clearSlots(slots);
             plugin.getCaseService().abortOpening(runtime, true);
@@ -208,7 +261,7 @@ public class WheelOpeningAnimation implements OpeningAnimation {
 
         closeChest();
         Location winnerLocation = visualItemLocation(winner.stand.getLocation());
-        spawnWinBurst(winnerLocation, session);
+        spawnWinBurst(winnerLocation);
         runtime.getLocation().getWorld().playSound(runtime.getLocation(), isPremiumReward(session) ? Sound.UI_TOAST_CHALLENGE_COMPLETE : Sound.BLOCK_NOTE_BLOCK_CHIME, volume(1.0F), 1.05F);
 
         new BukkitRunnable() {
@@ -235,18 +288,18 @@ public class WheelOpeningAnimation implements OpeningAnimation {
 
                 WheelSlot slot = slots.get(index++);
                 Location visualLocation = visualItemLocation(slot.stand.getLocation());
-                spawnOrbitParticle(visualLocation, vanishParticle(session), 10);
+                spawnOrbitParticle(visualLocation, vanishParticle, 10);
                 slot.stand.getWorld().playSound(visualLocation, Sound.BLOCK_FIRE_EXTINGUISH, volume(0.45F), 1.15F);
                 removeIfValid(slot.stand);
             }
-        }.runTaskTimer(plugin, 6L, 3L);
+        }.runTaskTimer(plugin, performance.cadence(6L), performance.cadence(3L));
     }
 
     private void moveWinnerToCase(OpeningSession session, WheelSlot winner, List<WheelSlot> slots) {
-        Location destination = runtime.getLocation().clone().add(0.5, -0.45 + visualHeightOffset(), 0.5);
+        Location destination = runtime.getLocation().clone().add(0.5D, -0.45D + VISUAL_HEIGHT_OFFSET, 0.5D);
 
         new BukkitRunnable() {
-            private int tick;
+            private int elapsed;
 
             @Override
             public void run() {
@@ -257,33 +310,32 @@ public class WheelOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                tick++;
+                elapsed += motionInterval;
                 Vector direction = destination.toVector().subtract(winner.stand.getLocation().toVector());
-                if (direction.lengthSquared() <= 0.02D || tick >= 20) {
+                if (direction.lengthSquared() <= 0.02D || elapsed >= 20) {
                     winner.stand.teleport(oriented(destination.clone()));
                     finishWheel(session, winner, slots);
                     cancel();
                     return;
                 }
 
-                direction.normalize().multiply(0.22D);
+                direction.normalize().multiply(0.22D * motionInterval);
                 Location next = winner.stand.getLocation().clone().add(direction);
                 winner.stand.teleport(oriented(next));
-                spawnOrbitParticle(visualItemLocation(next), winParticle(session), 3);
-                if (tick % 2 == 0) {
+                spawnOrbitParticle(visualItemLocation(next), winParticle, 3);
+                if ((elapsed / motionInterval) % 2 == 0) {
                     next.getWorld().playSound(visualItemLocation(next), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, volume(0.4F), 1.3F);
                 }
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+        }.runTaskTimer(plugin, 0L, motionInterval);
     }
 
     private void finishWheel(OpeningSession session, WheelSlot winner, List<WheelSlot> slots) {
-        Location caseCenter = visualItemLocation(runtime.getLocation().clone().add(0.5, -0.45, 0.5));
+        Location caseCenter = visualItemLocation(runtime.getLocation().clone().add(0.5D, -0.45D, 0.5D));
         spawnOrbitParticle(caseCenter, isPremiumReward(session) ? Particle.DRAGON_BREATH : Particle.END_ROD, scaled(24));
         caseCenter.getWorld().playSound(caseCenter, Sound.ENTITY_PLAYER_LEVELUP, volume(0.9F), 1.0F);
         removeIfValid(winner.stand);
         clearSlots(slots);
-
         plugin.getOpeningResults().complete(player, runtime, session, session.getFinalReward());
     }
 
@@ -334,7 +386,7 @@ public class WheelOpeningAnimation implements OpeningAnimation {
         state.update();
     }
 
-    private void startPulse(OpeningSession session) {
+    private void startPulse() {
         new BukkitRunnable() {
             private int tick;
 
@@ -345,9 +397,9 @@ public class WheelOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                Location center = runtime.getLocation().clone().add(0.5, 0.28, 0.5);
+                Location center = runtime.getLocation().clone().add(0.5D, 0.28D, 0.5D);
                 runtime.getLocation().getWorld().spawnParticle(
-                        isPremiumReward(session) ? Particle.GLOW : Particle.WITCH,
+                        isPremiumReward(runtime.getSession()) ? Particle.GLOW : Particle.WITCH,
                         center,
                         scaled(10),
                         0.2,
@@ -355,54 +407,47 @@ public class WheelOpeningAnimation implements OpeningAnimation {
                         0.2,
                         0.01
                 );
-                spawnOrbitParticle(center.clone().add(0.0, 0.25, 0.0), trailParticle(session), 4);
+                spawnOrbitParticle(center.clone().add(0.0D, 0.25D, 0.0D), trailParticle, 4);
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(2L));
     }
 
-    private Location orbitPosition(Location center, double degrees, double radius) {
+    private Location orbitPosition(Location center, double degrees, double orbitRadius) {
         double radians = Math.toRadians(degrees);
-        String axis = wheelAxis();
         Location location = center.clone();
-
-        if ("x".equals(axis)) {
-            location.add(0.0D, Math.sin(radians) * radius, Math.cos(radians) * radius);
+        if ("x".equals(wheelAxis)) {
+            location.add(0.0D, Math.sin(radians) * orbitRadius, Math.cos(radians) * orbitRadius);
         } else {
-            location.add(Math.cos(radians) * radius, Math.sin(radians) * radius, 0.0D);
+            location.add(Math.cos(radians) * orbitRadius, Math.sin(radians) * orbitRadius, 0.0D);
         }
         return oriented(location);
     }
 
     private Location oriented(Location location) {
-        location.setYaw(caseYaw());
+        location.setYaw(caseYaw);
         location.setPitch(0.0F);
         return location;
     }
 
-    private float caseYaw() {
+    private float resolveCaseYaw() {
         Block block = runtime.getLocation().getBlock();
         if (block.getBlockData() instanceof Directional directional) {
-            return yawFor(directional.getFacing());
+            Location probe = runtime.getLocation().clone();
+            probe.setDirection(directional.getFacing().getDirection());
+            return probe.getYaw();
         }
         return runtime.getLocation().getYaw();
     }
 
-    private float yawFor(BlockFace facing) {
-        Location probe = runtime.getLocation().clone();
-        probe.setDirection(facing.getDirection());
-        return probe.getYaw();
-    }
-
     private double nextSpeed(double currentSpeed, double angleOffset) {
-        double min = minSpeed();
-        if (angleOffset < minTotalRotation()) {
-            return Math.max(min, currentSpeed - (speedFade() * 0.35D));
+        if (angleOffset < minTotalRotation) {
+            return Math.max(minSpeed, currentSpeed - (speedFade * 0.35D * motionInterval));
         }
-        return Math.max(min, currentSpeed - speedFade());
+        return Math.max(minSpeed, currentSpeed - (speedFade * motionInterval));
     }
 
     private double distanceToSettle(double degrees) {
-        double diff = Math.abs(normalizeDegrees(degrees) - settleDegrees());
+        double diff = Math.abs(normalizeDegrees(degrees) - settleDegrees);
         return Math.min(diff, 360.0D - diff);
     }
 
@@ -411,13 +456,13 @@ public class WheelOpeningAnimation implements OpeningAnimation {
         return normalized < 0.0D ? normalized + 360.0D : normalized;
     }
 
-    private void spawnWinBurst(Location location, OpeningSession session) {
-        spawnOrbitParticle(location.clone().add(0.0, 0.35, 0.0), winParticle(session), scaled(20));
-        location.getWorld().playSound(location, Sound.BLOCK_AMETHYST_CLUSTER_BREAK, volume(0.7F), isPremiumReward(session) ? 0.7F : 1.15F);
+    private void spawnWinBurst(Location location) {
+        spawnOrbitParticle(location.clone().add(0.0D, 0.35D, 0.0D), winParticle, scaled(20));
+        location.getWorld().playSound(location, Sound.BLOCK_AMETHYST_CLUSTER_BREAK, volume(0.7F), isPremiumReward(runtime.getSession()) ? 0.7F : 1.15F);
     }
 
     private Location visualItemLocation(Location standLocation) {
-        return standLocation.clone().add(0.0D, visualHeightOffset(), 0.0D);
+        return standLocation.clone().add(0.0D, VISUAL_HEIGHT_OFFSET, 0.0D);
     }
 
     private void hideCaseBlock() {
@@ -426,75 +471,17 @@ public class WheelOpeningAnimation implements OpeningAnimation {
         }
     }
 
-    private double visualHeightOffset() {
-        return 1.15D;
-    }
-
     private void spawnOrbitParticle(Location location, Particle particle, int count) {
         if (location.getWorld() == null) {
             return;
         }
 
         if (particle.getDataType() == Particle.DustOptions.class) {
-            location.getWorld().spawnParticle(
-                    particle,
-                    location,
-                    count,
-                    0.08D,
-                    0.08D,
-                    0.08D,
-                    0.0D,
-                    dustOptions()
-            );
+            location.getWorld().spawnParticle(particle, location, Math.max(1, count), 0.08D, 0.08D, 0.08D, 0.0D, dustOptions);
             return;
         }
 
-        location.getWorld().spawnParticle(particle, location, count, 0.08D, 0.08D, 0.08D, 0.01D);
-    }
-
-    private Particle trailParticle(OpeningSession session) {
-        return configuredParticle("settings.animations.wheel.particle", isPremiumReward(session) ? Particle.DUST : Particle.FLAME);
-    }
-
-    private Particle winParticle(OpeningSession session) {
-        return configuredParticle("settings.animations.wheel.win-particle", isPremiumReward(session) ? Particle.DRAGON_BREATH : Particle.SMOKE);
-    }
-
-    private Particle vanishParticle(OpeningSession session) {
-        return configuredParticle("settings.animations.wheel.vanish-particle", isPremiumReward(session) ? Particle.GLOW : Particle.SMOKE);
-    }
-
-    private Particle configuredParticle(String path, Particle fallback) {
-        String raw = plugin.getConfig().getString(path, fallback.name());
-        if (raw == null || raw.trim().isEmpty()) {
-            return fallback;
-        }
-
-        String normalized = raw.trim().toUpperCase(Locale.ROOT);
-        if ("REDSTONE".equals(normalized)) {
-            normalized = "DUST";
-        }
-
-        try {
-            return Particle.valueOf(normalized);
-        } catch (IllegalArgumentException exception) {
-            return fallback;
-        }
-    }
-
-    private Particle.DustOptions dustOptions() {
-        return new Particle.DustOptions(
-                Color.fromRGB(
-                        clampColor(plugin.getConfig().getInt("settings.animations.wheel.color.red", 101)),
-                        clampColor(plugin.getConfig().getInt("settings.animations.wheel.color.green", 20)),
-                        clampColor(plugin.getConfig().getInt("settings.animations.wheel.color.blue", 5))
-                ),
-                1.0F
-        );
-    }
-
-    private int clampColor(int value) {
-        return Math.max(0, Math.min(255, value));
+        location.getWorld().spawnParticle(particle, location, Math.max(1, count), 0.08D, 0.08D, 0.08D, 0.01D);
     }
 
     private boolean isActive(OpeningSession session) {
@@ -519,69 +506,33 @@ public class WheelOpeningAnimation implements OpeningAnimation {
     }
 
     private boolean isPremiumReward(OpeningSession session) {
-        return session.getFinalReward() != null && (session.getFinalReward().isRare() || session.isGuaranteedReward());
+        return session != null && session.getFinalReward() != null && (session.getFinalReward().isRare() || session.isGuaranteedReward());
     }
 
     private int scaled(int base) {
-        double scale = Math.max(0.1D, plugin.getConfig().getDouble("settings.animations.intensity.particles", 1.0D));
-        return Math.max(1, (int) Math.round(base * scale));
-    }
-
-    private int spawnIntervalTicks() {
-        return Math.max(1, plugin.getConfig().getInt("settings.animations.wheel.spawn-interval-ticks", 4));
-    }
-
-    private double radius() {
-        return Math.max(0.8D, plugin.getConfig().getDouble("settings.animations.wheel.radius", 2.0D));
-    }
-
-    private double wheelYOffset() {
-        return plugin.getConfig().getDouble("settings.animations.wheel.y-offset", 1.1D);
-    }
-
-    private double wheelCenterYOffset() {
-        return Math.max(0.2D, wheelYOffset() - 0.75D);
-    }
-
-    private double maxSpeed() {
-        return Math.max(2.0D, plugin.getConfig().getDouble("settings.animations.wheel.max-speed", 16.0D));
-    }
-
-    private double minSpeed() {
-        return Math.max(0.8D, plugin.getConfig().getDouble("settings.animations.wheel.min-speed", 2.0D));
-    }
-
-    private double speedFade() {
-        return Math.max(0.01D, plugin.getConfig().getDouble("settings.animations.wheel.speed-fade", 0.09D));
-    }
-
-    private double minTotalRotation() {
-        return Math.max(180.0D, plugin.getConfig().getDouble("settings.animations.wheel.min-total-rotation", 540.0D));
-    }
-
-    private double settleDegrees() {
-        return plugin.getConfig().getDouble("settings.animations.wheel.settle-degrees", 270.0D);
-    }
-
-    private String wheelAxis() {
-        return plugin.getConfig().getString("settings.animations.wheel.axis", "z").trim().toLowerCase(Locale.ROOT);
+        return performance.particles(base);
     }
 
     private float volume(float base) {
-        double scale = Math.max(0.0D, plugin.getConfig().getDouble("settings.animations.intensity.sound", 1.0D));
-        return (float) (base * scale);
+        return performance.volume(base);
+    }
+
+    private int resolvePrizeCount() {
+        return performance.limitWheelSlots(Math.max(6, plugin.getConfig().getInt("settings.animations.wheel.prize-count", 8)));
+    }
+
+    private int clampColor(int value) {
+        return Math.max(0, Math.min(255, value));
     }
 
     private static final class WheelSlot {
         private final ArmorStand stand;
-        private final CaseItem prize;
         private final boolean winner;
         private final double baseAngle;
         private double currentAngle;
 
-        private WheelSlot(ArmorStand stand, CaseItem prize, double baseAngle, boolean winner) {
+        private WheelSlot(ArmorStand stand, double baseAngle, boolean winner) {
             this.stand = stand;
-            this.prize = prize;
             this.baseAngle = baseAngle;
             this.currentAngle = baseAngle;
             this.winner = winner;

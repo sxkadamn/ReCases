@@ -33,6 +33,7 @@ public class LeaderboardHologramService implements AutoCloseable {
     private final List<LeaderboardHologram> holograms = new ArrayList<>();
     private final Map<String, LeaderboardHologram> hologramsById = new LinkedHashMap<>();
     private BukkitTask updateTask;
+    private BukkitTask queuedRefreshTask;
 
     public LeaderboardHologramService(PluginContext plugin, TextFormatter textFormatter) {
         this.plugin = plugin;
@@ -84,6 +85,20 @@ public class LeaderboardHologramService implements AutoCloseable {
         });
     }
 
+    public void requestRefresh() {
+        if (holograms.isEmpty()) {
+            return;
+        }
+        if (queuedRefreshTask != null) {
+            return;
+        }
+
+        queuedRefreshTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            queuedRefreshTask = null;
+            refreshAll();
+        }, 20L);
+    }
+
     public boolean handleInteraction(Entity entity, Player player) {
         if (entity == null || !entity.hasMetadata(LEADERBOARD_HOLOGRAM_METADATA)) {
             return false;
@@ -127,6 +142,10 @@ public class LeaderboardHologramService implements AutoCloseable {
         if (updateTask != null) {
             updateTask.cancel();
             updateTask = null;
+        }
+        if (queuedRefreshTask != null) {
+            queuedRefreshTask.cancel();
+            queuedRefreshTask = null;
         }
 
         for (LeaderboardHologram hologram : holograms) {

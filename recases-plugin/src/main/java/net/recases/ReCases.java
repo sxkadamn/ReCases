@@ -117,17 +117,19 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     @Override
     public void onDisable() {
         getServer().getServicesManager().unregister(ReCasesApi.class, this);
-        networkSyncService.close();
-        leaderboardHologramService.close();
-        caseService.clear();
-        schematicService.close();
+        closeSafely(networkSyncService);
+        closeSafely(leaderboardHologramService);
+        if (caseService != null) {
+            caseService.clear();
+        }
+        closeSafely(schematicService);
         cleanupResidualEntities();
-        bStatsService.close();
-        statsService.close();
-        storageService.close();
-        rewardAuditService.close();
-        discordWebhookService.close();
-        updateService.close();
+        closeSafely(bStatsService);
+        closeSafely(statsService);
+        closeSafely(storageService);
+        closeSafely(rewardAuditService);
+        closeSafely(discordWebhookService);
+        closeSafely(updateService);
     }
 
     public void reloadPluginState() {
@@ -137,9 +139,9 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         caseService.clear();
         storageService.reload();
         statsService.reload();
-        rewardAuditService.reload();
         discordWebhookService.reload();
         caseService.reload();
+        rewardAuditService.reload();
         leaderboardHologramService.reload();
         updateService.reload();
         networkSyncService.reload();
@@ -318,6 +320,18 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
             }
         }
         return false;
+    }
+
+    private void closeSafely(AutoCloseable resource) {
+        if (resource == null) {
+            return;
+        }
+
+        try {
+            resource.close();
+        } catch (Exception exception) {
+            getLogger().warning("Failed to close resource during plugin shutdown: " + exception.getMessage());
+        }
     }
 }
 

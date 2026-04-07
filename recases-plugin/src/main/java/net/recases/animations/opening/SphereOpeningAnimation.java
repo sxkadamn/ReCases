@@ -21,21 +21,83 @@ import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class SphereOpeningAnimation implements OpeningAnimation {
 
     public static final String SPHERE_ENTITY_METADATA = "case_sphere_item";
 
+    private static final double VISUAL_HEIGHT_OFFSET = 1.15D;
+
     private final PluginContext plugin;
     private final Player player;
     private final CaseRuntime runtime;
+    private final AnimationPerformance performance;
+    private final int motionInterval;
+    private final int spawnIntervalTicks;
+    private final int itemCount;
+    private final double radius;
+    private final double minRadius;
+    private final double sphereCenterYOffset;
+    private final double speedX;
+    private final double speedY;
+    private final double totalRotation;
+    private final int vectorIntervalTicks;
+    private final double shrinkStep;
+    private final double lineStep;
+    private final double neighborDistanceSquared;
+    private final Particle vectorParticle;
+    private final Particle itemParticle;
+    private final Particle winParticle;
+    private final Particle.DustOptions dustOptions;
+    private final float caseYaw;
 
     public SphereOpeningAnimation(PluginContext plugin, Player player, CaseRuntime runtime) {
         this.plugin = plugin;
         this.player = player;
         this.runtime = runtime;
+        this.performance = AnimationPerformance.create(plugin);
+        this.motionInterval = performance.motionInterval();
+        this.spawnIntervalTicks = Math.max(1, plugin.getConfig().getInt("settings.animations.sphere.spawn-interval-ticks", 2));
+        this.itemCount = resolveItemCount();
+        this.radius = Math.max(1.0D, plugin.getConfig().getDouble("settings.animations.sphere.radius", 2.5D));
+        this.minRadius = Math.max(0.6D, plugin.getConfig().getDouble("settings.animations.sphere.min-radius", 1.8D));
+        double yOffset = plugin.getConfig().getDouble("settings.animations.sphere.y-offset", 1.5D);
+        this.sphereCenterYOffset = Math.max(0.3D, yOffset - 0.95D);
+        this.speedX = Math.max(0.1D, plugin.getConfig().getDouble("settings.animations.sphere.rotation-speed-x", 1.25D));
+        this.speedY = Math.max(0.1D, plugin.getConfig().getDouble("settings.animations.sphere.rotation-speed-y", 1.75D));
+        this.totalRotation = Math.max(180.0D, plugin.getConfig().getDouble("settings.animations.sphere.total-rotation", 360.0D));
+        this.vectorIntervalTicks = Math.max(4, plugin.getConfig().getInt("settings.animations.sphere.vector-interval-ticks", 14));
+        this.shrinkStep = Math.max(0.0D, plugin.getConfig().getDouble("settings.animations.sphere.shrink-step", 0.05D));
+        this.lineStep = Math.max(0.05D, plugin.getConfig().getDouble("settings.animations.sphere.line-step", 0.2D));
+        double neighborDistance = Math.max(0.2D, plugin.getConfig().getDouble("settings.animations.sphere.neighbor-distance-factor", 1.0D)) * radius;
+        this.neighborDistanceSquared = neighborDistance * neighborDistance;
+
+        OpeningSession session = runtime.getSession();
+        boolean premium = session != null
+                && session.getFinalReward() != null
+                && (session.getFinalReward().isRare() || session.isGuaranteedReward());
+        this.vectorParticle = ParticleAnimationSupport.resolveParticle(
+                plugin.getConfig().getString("settings.animations.sphere.vector-particle"),
+                premium ? Particle.DUST : Particle.FLAME
+        );
+        this.itemParticle = ParticleAnimationSupport.resolveParticle(
+                plugin.getConfig().getString("settings.animations.sphere.item-particle"),
+                premium ? Particle.DUST : Particle.END_ROD
+        );
+        this.winParticle = ParticleAnimationSupport.resolveParticle(
+                plugin.getConfig().getString("settings.animations.sphere.win-particle"),
+                premium ? Particle.DRAGON_BREATH : Particle.GLOW
+        );
+        this.dustOptions = new Particle.DustOptions(
+                Color.fromRGB(
+                        clampColor(plugin.getConfig().getInt("settings.animations.sphere.color.red", 101)),
+                        clampColor(plugin.getConfig().getInt("settings.animations.sphere.color.green", 20)),
+                        clampColor(plugin.getConfig().getInt("settings.animations.sphere.color.blue", 5))
+                ),
+                1.0F
+        );
+        this.caseYaw = resolveCaseYaw();
     }
 
     @Override
@@ -48,7 +110,7 @@ public class SphereOpeningAnimation implements OpeningAnimation {
         runtime.removeHologram();
         hideCaseBlock();
         player.playSound(runtime.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, volume(1.0F), 0.8F);
-        startPulse(session);
+        startPulse();
 
         new BukkitRunnable() {
             @Override
@@ -59,37 +121,51 @@ public class SphereOpeningAnimation implements OpeningAnimation {
                 }
                 startSphere(session);
             }
-        }.runTaskLater(plugin, 10L);
+        }.runTaskLater(plugin, performance.cadence(10L));
         return true;
     }
 
     private void startSphere(OpeningSession session) {
-        Location center = runtime.getLocation().clone().add(0.5D, sphereCenterYOffset(), 0.5D);
+        Location center = runtime.getLocation().clone().add(0.5D, sphereCenterYOffset, 0.5D);
         List<SphereSlot> slots = buildSlots(session, center);
         if (slots.isEmpty()) {
             plugin.getCaseService().abortOpening(runtime, true);
             return;
         }
 
-        spawnSlots(session, center, slots);
+        List<ConnectionLink> connections = buildConnections(slots);
+        spawnSlots(session, center, slots, connections);
     }
 
     private List<SphereSlot> buildSlots(OpeningSession session, Location center) {
-        int count = Math.max(8, plugin.getConfig().getInt("settings.animations.sphere.item-count", 16));
-        int winnerIndex = ThreadLocalRandom.current().nextInt(count);
-        List<SphereSlot> slots = new ArrayList<>(count);
+        int winnerIndex = ThreadLocalRandom.current().nextInt(itemCount);
+        List<SphereSlot> slots = new ArrayList<>(itemCount);
 
-        for (int index = 0; index < count; index++) {
+        for (int index = 0; index < itemCount; index++) {
             boolean winner = index == winnerIndex;
             CaseItem prize = winner ? session.getFinalReward() : fallbackPrize(session);
-            Vector baseVector = fibonacciSpherePoint(index, count).multiply(radius());
+            Vector unitVector = fibonacciSpherePoint(index, itemCount);
             ArmorStand stand = createStand(center, prize);
-            slots.add(new SphereSlot(stand, baseVector, winner));
+            slots.add(new SphereSlot(stand, unitVector, winner));
         }
         return slots;
     }
 
-    private void spawnSlots(OpeningSession session, Location center, List<SphereSlot> slots) {
+    private List<ConnectionLink> buildConnections(List<SphereSlot> slots) {
+        List<ConnectionLink> connections = new ArrayList<>();
+        for (int first = 0; first < slots.size(); first++) {
+            Vector a = slots.get(first).unitVector.clone().multiply(radius);
+            for (int second = first + 1; second < slots.size(); second++) {
+                Vector b = slots.get(second).unitVector.clone().multiply(radius);
+                if (a.distanceSquared(b) <= neighborDistanceSquared) {
+                    connections.add(new ConnectionLink(slots.get(first), slots.get(second)));
+                }
+            }
+        }
+        return connections;
+    }
+
+    private void spawnSlots(OpeningSession session, Location center, List<SphereSlot> slots, List<ConnectionLink> connections) {
         new BukkitRunnable() {
             private int index;
 
@@ -104,49 +180,53 @@ public class SphereOpeningAnimation implements OpeningAnimation {
 
                 if (index >= slots.size()) {
                     cancel();
-                    rotateSphere(session, center, slots);
+                    rotateSphere(session, center, slots, connections);
                     return;
                 }
 
-                SphereSlot slot = slots.get(index++);
-                Location spawn = center.clone();
-                slot.stand.teleport(oriented(spawn));
-                slot.stand.getWorld().playSound(spawn, Sound.ITEM_ARMOR_EQUIP_GENERIC, volume(0.7F), 1.15F);
-
-                new BukkitRunnable() {
-                    private int tick;
-
-                    @Override
-                    public void run() {
-                        if (!isActive(session) || slot.stand.isDead()) {
-                            cancel();
-                            return;
-                        }
-
-                        tick++;
-                        double progress = Math.min(1.0D, tick / 7.0D);
-                        Location target = center.clone().add(slot.baseVector.clone().multiply(progress));
-                        slot.currentLocation = target;
-                        slot.stand.teleport(oriented(target));
-                        slot.stand.setHeadPose(lookPose(target, center));
-                        spawnParticle(visualItemLocation(target), itemParticle(session), 2);
-
-                        if (progress >= 1.0D) {
-                            slot.stand.getWorld().playSound(visualItemLocation(target), Sound.BLOCK_AMETHYST_BLOCK_CHIME, volume(0.45F), 0.95F);
-                            cancel();
-                        }
-                    }
-                }.runTaskTimer(plugin, 0L, 1L);
+                animateSlotSpawn(session, center, slots.get(index++));
             }
-        }.runTaskTimer(plugin, 0L, spawnIntervalTicks());
+        }.runTaskTimer(plugin, 0L, performance.cadence(spawnIntervalTicks));
     }
 
-    private void rotateSphere(OpeningSession session, Location center, List<SphereSlot> slots) {
+    private void animateSlotSpawn(OpeningSession session, Location center, SphereSlot slot) {
+        Location spawn = oriented(center.clone());
+        slot.stand.teleport(spawn);
+        slot.stand.getWorld().playSound(spawn, Sound.ITEM_ARMOR_EQUIP_GENERIC, volume(0.7F), 1.15F);
+
+        new BukkitRunnable() {
+            private int elapsed;
+
+            @Override
+            public void run() {
+                if (!isActive(session) || slot.stand.isDead()) {
+                    cancel();
+                    return;
+                }
+
+                elapsed += motionInterval;
+                double progress = Math.min(1.0D, elapsed / 7.0D);
+                Location target = center.clone().add(slot.unitVector.clone().multiply(radius * progress));
+                slot.currentLocation = target;
+                slot.stand.teleport(oriented(target));
+                slot.stand.setHeadPose(lookPose(target, center));
+                spawnParticle(visualItemLocation(target), itemParticle, 2);
+
+                if (progress >= 1.0D) {
+                    slot.stand.getWorld().playSound(visualItemLocation(target), Sound.BLOCK_AMETHYST_BLOCK_CHIME, volume(0.45F), 0.95F);
+                    cancel();
+                }
+            }
+        }.runTaskTimer(plugin, 0L, motionInterval);
+    }
+
+    private void rotateSphere(OpeningSession session, Location center, List<SphereSlot> slots, List<ConnectionLink> connections) {
         new BukkitRunnable() {
             private double angleX;
             private double angleY;
-            private double currentRadius = radius();
-            private int vectorTimer;
+            private double currentRadius = radius;
+            private int vectorElapsed;
+            private int soundBucket = -1;
 
             @Override
             public void run() {
@@ -157,13 +237,12 @@ public class SphereOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                angleX += speedX();
-                angleY += speedY();
-                vectorTimer++;
+                angleX += speedX * motionInterval;
+                angleY += speedY * motionInterval;
+                vectorElapsed += motionInterval;
 
                 for (SphereSlot slot : slots) {
-                    Vector rotated = slot.baseVector.clone()
-                            .normalize()
+                    Vector rotated = slot.unitVector.clone()
                             .multiply(currentRadius)
                             .rotateAroundX(Math.toRadians(angleX))
                             .rotateAroundY(Math.toRadians(angleY));
@@ -171,27 +250,29 @@ public class SphereOpeningAnimation implements OpeningAnimation {
                     slot.currentLocation = target;
                     slot.stand.teleport(oriented(target));
                     slot.stand.setHeadPose(lookPose(target, center));
-                    spawnParticle(visualItemLocation(target), itemParticle(session), 1);
+                    spawnParticle(visualItemLocation(target), itemParticle, 1);
                 }
 
-                if (vectorTimer >= vectorIntervalTicks()) {
-                    vectorTimer = 0;
-                    drawConnections(slots, session);
-                    currentRadius = Math.max(minRadius(), currentRadius - shrinkStep());
+                if (vectorElapsed >= vectorIntervalTicks) {
+                    vectorElapsed = 0;
+                    drawConnections(connections);
+                    currentRadius = Math.max(minRadius, currentRadius - (shrinkStep * motionInterval));
                 }
 
-                if (((int) angleY) % 36 == 0) {
+                int currentBucket = (int) (angleY / 36.0D);
+                if (currentBucket != soundBucket) {
+                    soundBucket = currentBucket;
                     center.getWorld().playSound(center, Sound.UI_BUTTON_CLICK, volume(0.4F), 1.2F);
                 }
 
-                if (angleX < totalRotation() && angleY < totalRotation()) {
+                if (angleX < totalRotation && angleY < totalRotation) {
                     return;
                 }
 
                 cancel();
                 finishSphere(session, slots);
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+        }.runTaskTimer(plugin, 0L, motionInterval);
     }
 
     private void finishSphere(OpeningSession session, List<SphereSlot> slots) {
@@ -201,8 +282,8 @@ public class SphereOpeningAnimation implements OpeningAnimation {
         }
 
         new BukkitRunnable() {
-            private final Location destination = runtime.getLocation().clone().add(0.5D, -0.45D + visualHeightOffset(), 0.5D);
-            private int tick;
+            private final Location destination = runtime.getLocation().clone().add(0.5D, -0.45D + VISUAL_HEIGHT_OFFSET, 0.5D);
+            private int elapsed;
 
             @Override
             public void run() {
@@ -213,9 +294,9 @@ public class SphereOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                tick++;
+                elapsed += motionInterval;
                 Vector direction = destination.toVector().subtract(winner.stand.getLocation().toVector());
-                if (direction.lengthSquared() <= 0.03D || tick >= 24) {
+                if (direction.lengthSquared() <= 0.03D || elapsed >= 24) {
                     winner.stand.teleport(oriented(destination.clone()));
                     winner.stand.setHeadPose(lookPose(destination, runtime.getLocation().clone().add(0.5D, 0.7D, 0.5D)));
                     cancel();
@@ -223,15 +304,15 @@ public class SphereOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                direction.normalize().multiply(0.18D);
+                direction.normalize().multiply(0.18D * motionInterval);
                 Location next = winner.stand.getLocation().clone().add(direction);
                 winner.stand.teleport(oriented(next));
-                spawnParticle(visualItemLocation(next), winParticle(session), 3);
-                if (tick % 2 == 0) {
+                spawnParticle(visualItemLocation(next), winParticle, 3);
+                if ((elapsed / motionInterval) % 2 == 0) {
                     next.getWorld().playSound(visualItemLocation(next), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, volume(0.45F), 1.25F);
                 }
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+        }.runTaskTimer(plugin, 0L, motionInterval);
     }
 
     private void dissolveLosers(OpeningSession session, SphereSlot winner, List<SphereSlot> slots) {
@@ -259,52 +340,37 @@ public class SphereOpeningAnimation implements OpeningAnimation {
 
                 SphereSlot slot = slots.get(index++);
                 Location location = visualItemLocation(slot.stand.getLocation());
-                spawnParticle(location, vectorParticle(session), 8);
+                spawnParticle(location, vectorParticle, 8);
                 location.getWorld().playSound(location, Sound.BLOCK_FIRE_EXTINGUISH, volume(0.35F), 1.1F);
                 removeIfValid(slot.stand);
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(2L));
     }
 
     private void complete(OpeningSession session, SphereSlot winner, List<SphereSlot> slots) {
         Location center = visualItemLocation(runtime.getLocation().clone().add(0.5D, -0.4D, 0.5D));
-        spawnParticle(center, winParticle(session), scaled(24));
+        spawnParticle(center, winParticle, scaled(24));
         center.getWorld().playSound(center, Sound.ENTITY_PLAYER_LEVELUP, volume(0.95F), 1.0F);
 
         removeIfValid(winner.stand);
         clearSlots(slots);
-
         plugin.getOpeningResults().complete(player, runtime, session, session.getFinalReward());
     }
 
-    private void drawConnections(List<SphereSlot> slots, OpeningSession session) {
-        double threshold = Math.max(0.4D, radius() * neighborDistanceFactor());
-        Particle particle = vectorParticle(session);
-
-        for (int first = 0; first < slots.size(); first++) {
-            Location a = currentLocation(slots.get(first));
-            for (int second = first + 1; second < slots.size(); second++) {
-                Location b = currentLocation(slots.get(second));
-                if (a.distanceSquared(b) > threshold * threshold) {
-                    continue;
-                }
-                drawLine(a, b, particle);
-            }
-        }
-    }
-
-    private void drawLine(Location start, Location end, Particle particle) {
-        Vector direction = end.toVector().subtract(start.toVector());
-        double distance = direction.length();
-        if (distance <= 0.001D) {
+    private void drawConnections(List<ConnectionLink> connections) {
+        if (connections.isEmpty()) {
             return;
         }
 
-        direction.normalize().multiply(lineStep());
-        Location cursor = start.clone();
-        for (double moved = 0.0D; moved < distance; moved += lineStep()) {
-            spawnParticle(cursor, particle, 1);
-            cursor.add(direction);
+        int budget = performance.connectionBudget(connections.size());
+        for (int index = 0; index < budget; index++) {
+            ConnectionLink connection = connections.get(index);
+            ParticleAnimationSupport.drawLine(
+                    currentLocation(connection.first),
+                    currentLocation(connection.second),
+                    performance.lineStep(lineStep),
+                    (location, count) -> spawnParticle(location, vectorParticle, count)
+            );
         }
     }
 
@@ -344,11 +410,9 @@ public class SphereOpeningAnimation implements OpeningAnimation {
     private Vector fibonacciSpherePoint(int index, int count) {
         double samples = Math.max(1.0D, count);
         double y = 1.0D - ((index + 0.5D) * (2.0D / samples));
-        double radius = Math.sqrt(Math.max(0.0D, 1.0D - (y * y)));
+        double radiusFactor = Math.sqrt(Math.max(0.0D, 1.0D - (y * y)));
         double theta = Math.PI * (3.0D - Math.sqrt(5.0D)) * index;
-        double x = Math.cos(theta) * radius;
-        double z = Math.sin(theta) * radius;
-        return new Vector(x, y, z);
+        return new Vector(Math.cos(theta) * radiusFactor, y, Math.sin(theta) * radiusFactor);
     }
 
     private EulerAngle lookPose(Location from, Location to) {
@@ -358,7 +422,7 @@ public class SphereOpeningAnimation implements OpeningAnimation {
         return new EulerAngle(pitch, yaw, 0.0D);
     }
 
-    private void startPulse(OpeningSession session) {
+    private void startPulse() {
         new BukkitRunnable() {
             private int tick;
 
@@ -370,10 +434,10 @@ public class SphereOpeningAnimation implements OpeningAnimation {
                 }
 
                 Location center = runtime.getLocation().clone().add(0.5D, 0.32D, 0.5D);
-                spawnParticle(center, itemParticle(session), scaled(10));
-                spawnParticle(center.clone().add(0.0D, 0.25D, 0.0D), vectorParticle(session), scaled(6));
+                spawnParticle(center, itemParticle, scaled(10));
+                spawnParticle(center.clone().add(0.0D, 0.25D, 0.0D), vectorParticle, scaled(6));
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(2L));
     }
 
     private void hideCaseBlock() {
@@ -388,104 +452,36 @@ public class SphereOpeningAnimation implements OpeningAnimation {
         }
 
         if (particle.getDataType() == Particle.DustOptions.class) {
-            location.getWorld().spawnParticle(
-                    particle,
-                    location,
-                    count,
-                    0.06D,
-                    0.06D,
-                    0.06D,
-                    0.0D,
-                    dustOptions()
-            );
+            location.getWorld().spawnParticle(particle, location, Math.max(1, count), 0.06D, 0.06D, 0.06D, 0.0D, dustOptions);
             return;
         }
 
-        location.getWorld().spawnParticle(particle, location, count, 0.04D, 0.04D, 0.04D, 0.0D);
+        location.getWorld().spawnParticle(particle, location, Math.max(1, count), 0.04D, 0.04D, 0.04D, 0.0D);
     }
 
     private Location visualItemLocation(Location standLocation) {
-        return standLocation.clone().add(0.0D, visualHeightOffset(), 0.0D);
-    }
-
-    private double visualHeightOffset() {
-        return 1.15D;
+        return standLocation.clone().add(0.0D, VISUAL_HEIGHT_OFFSET, 0.0D);
     }
 
     private Location oriented(Location location) {
-        location.setYaw(caseYaw());
+        location.setYaw(caseYaw);
         location.setPitch(0.0F);
         return location;
     }
 
-    private float caseYaw() {
+    private float resolveCaseYaw() {
         Block block = runtime.getLocation().getBlock();
         if (block.getBlockData() instanceof Directional directional) {
-            return yawFor(directional.getFacing());
+            Location probe = runtime.getLocation().clone();
+            probe.setDirection(directional.getFacing().getDirection());
+            return probe.getYaw();
         }
         return runtime.getLocation().getYaw();
-    }
-
-    private float yawFor(BlockFace facing) {
-        Location probe = runtime.getLocation().clone();
-        probe.setDirection(facing.getDirection());
-        return probe.getYaw();
-    }
-
-    private Particle vectorParticle(OpeningSession session) {
-        return configuredParticle("settings.animations.sphere.vector-particle", isPremiumReward(session) ? Particle.DUST : Particle.FLAME);
-    }
-
-    private Particle itemParticle(OpeningSession session) {
-        return configuredParticle("settings.animations.sphere.item-particle", isPremiumReward(session) ? Particle.DUST : Particle.END_ROD);
-    }
-
-    private Particle winParticle(OpeningSession session) {
-        return configuredParticle("settings.animations.sphere.win-particle", isPremiumReward(session) ? Particle.DRAGON_BREATH : Particle.GLOW);
-    }
-
-    private Particle configuredParticle(String path, Particle fallback) {
-        String raw = plugin.getConfig().getString(path, fallback.name());
-        if (raw == null || raw.trim().isEmpty()) {
-            return fallback;
-        }
-
-        String normalized = raw.trim().toUpperCase(Locale.ROOT);
-        if ("REDSTONE".equals(normalized)) {
-            normalized = "DUST";
-        }
-
-        try {
-            return Particle.valueOf(normalized);
-        } catch (IllegalArgumentException exception) {
-            return fallback;
-        }
-    }
-
-    private Particle.DustOptions dustOptions() {
-        return new Particle.DustOptions(
-                Color.fromRGB(
-                        clampColor(plugin.getConfig().getInt("settings.animations.sphere.color.red", 101)),
-                        clampColor(plugin.getConfig().getInt("settings.animations.sphere.color.green", 20)),
-                        clampColor(plugin.getConfig().getInt("settings.animations.sphere.color.blue", 5))
-                ),
-                1.0F
-        );
-    }
-
-    private int clampColor(int value) {
-        return Math.max(0, Math.min(255, value));
     }
 
     private CaseItem fallbackPrize(OpeningSession session) {
         CaseItem prize = plugin.getCaseService().getRandomReward(session.getSelectedCase());
         return prize == null ? session.getFinalReward() : prize;
-    }
-
-    private boolean isPremiumReward(OpeningSession session) {
-        return session != null
-                && session.getFinalReward() != null
-                && (session.getFinalReward().isRare() || session.isGuaranteedReward());
     }
 
     private boolean isActive(OpeningSession session) {
@@ -499,73 +495,41 @@ public class SphereOpeningAnimation implements OpeningAnimation {
     }
 
     private int scaled(int base) {
-        double scale = Math.max(0.1D, plugin.getConfig().getDouble("settings.animations.intensity.particles", 1.0D));
-        return Math.max(1, (int) Math.round(base * scale));
+        return performance.particles(base);
     }
 
     private float volume(float base) {
-        double scale = Math.max(0.0D, plugin.getConfig().getDouble("settings.animations.intensity.sound", 1.0D));
-        return (float) (base * scale);
+        return performance.volume(base);
     }
 
-    private int spawnIntervalTicks() {
-        return Math.max(1, plugin.getConfig().getInt("settings.animations.sphere.spawn-interval-ticks", 2));
+    private int resolveItemCount() {
+        return performance.limitSphereItems(Math.max(8, plugin.getConfig().getInt("settings.animations.sphere.item-count", 16)));
     }
 
-    private double radius() {
-        return Math.max(1.0D, plugin.getConfig().getDouble("settings.animations.sphere.radius", 2.5D));
-    }
-
-    private double minRadius() {
-        return Math.max(0.6D, plugin.getConfig().getDouble("settings.animations.sphere.min-radius", 1.8D));
-    }
-
-    private double yOffset() {
-        return plugin.getConfig().getDouble("settings.animations.sphere.y-offset", 1.5D);
-    }
-
-    private double sphereCenterYOffset() {
-        return Math.max(0.3D, yOffset() - 0.95D);
-    }
-
-    private double speedX() {
-        return Math.max(0.1D, plugin.getConfig().getDouble("settings.animations.sphere.rotation-speed-x", 1.25D));
-    }
-
-    private double speedY() {
-        return Math.max(0.1D, plugin.getConfig().getDouble("settings.animations.sphere.rotation-speed-y", 1.75D));
-    }
-
-    private double totalRotation() {
-        return Math.max(180.0D, plugin.getConfig().getDouble("settings.animations.sphere.total-rotation", 360.0D));
-    }
-
-    private int vectorIntervalTicks() {
-        return Math.max(4, plugin.getConfig().getInt("settings.animations.sphere.vector-interval-ticks", 14));
-    }
-
-    private double shrinkStep() {
-        return Math.max(0.0D, plugin.getConfig().getDouble("settings.animations.sphere.shrink-step", 0.05D));
-    }
-
-    private double neighborDistanceFactor() {
-        return Math.max(0.2D, plugin.getConfig().getDouble("settings.animations.sphere.neighbor-distance-factor", 1.0D));
-    }
-
-    private double lineStep() {
-        return Math.max(0.05D, plugin.getConfig().getDouble("settings.animations.sphere.line-step", 0.2D));
+    private int clampColor(int value) {
+        return Math.max(0, Math.min(255, value));
     }
 
     private static final class SphereSlot {
         private final ArmorStand stand;
-        private final Vector baseVector;
+        private final Vector unitVector;
         private final boolean winner;
         private Location currentLocation;
 
-        private SphereSlot(ArmorStand stand, Vector baseVector, boolean winner) {
+        private SphereSlot(ArmorStand stand, Vector unitVector, boolean winner) {
             this.stand = stand;
-            this.baseVector = baseVector;
+            this.unitVector = unitVector;
             this.winner = winner;
+        }
+    }
+
+    private static final class ConnectionLink {
+        private final SphereSlot first;
+        private final SphereSlot second;
+
+        private ConnectionLink(SphereSlot first, SphereSlot second) {
+            this.first = first;
+            this.second = second;
         }
     }
 }

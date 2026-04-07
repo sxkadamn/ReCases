@@ -20,6 +20,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerKickEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
@@ -120,6 +121,11 @@ public class CaseListener implements Listener {
     @EventHandler
     public void onKick(PlayerKickEvent event) {
         abortPlayerOpenings(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        plugin.getRewardAudit().recoverPendingRewards(event.getPlayer());
     }
 
     private void abortPlayerOpenings(Player player) {

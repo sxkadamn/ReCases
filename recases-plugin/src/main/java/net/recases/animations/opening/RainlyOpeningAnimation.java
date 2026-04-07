@@ -22,11 +22,15 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
     private final PluginContext plugin;
     private final Player player;
     private final CaseRuntime runtime;
+    private final AnimationPerformance performance;
+    private final Particle rainParticle;
 
     public RainlyOpeningAnimation(PluginContext plugin, Player player, CaseRuntime runtime) {
         this.plugin = plugin;
         this.player = player;
         this.runtime = runtime;
+        this.performance = AnimationPerformance.create(plugin);
+        this.rainParticle = resolveRainParticle();
     }
 
     @Override
@@ -93,12 +97,14 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                tick += 2;
+                tick += performance.stepTicks(2);
                 swirl += 0.25D;
             }
 
             private void spawnSwirl(Location center) {
-                for (double phi = 0.0D; phi <= 9.0D; phi++) {
+                int samples = Math.max(4, scaled(10));
+                for (int index = 0; index < samples; index++) {
+                    double phi = (Math.PI * 2.0D * index) / samples;
                     double x = 0.09D * (9.0D - swirl * 2.5D) * Math.cos(swirl + phi);
                     double z = 0.09D * (9.0D - swirl * 2.5D) * Math.sin(swirl + phi);
                     center.getWorld().spawnParticle(Particle.FIREWORK, center.clone().add(x, 0.4D, z), 1, 0.02D, 0.02D, 0.02D, 0.0D);
@@ -107,7 +113,7 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
                     swirl = 0.0D;
                 }
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(2L));
 
         return true;
     }
@@ -134,11 +140,10 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
 
     private void spawnRain(Location rain1, Location rain2, Location rain3, Location rain4,
                            Location cloud1, Location cloud2, Location cloud3, Location cloud4) {
-        Particle fallingParticle = rainParticle();
-        rain1.getWorld().spawnParticle(fallingParticle, rain1, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-        rain2.getWorld().spawnParticle(fallingParticle, rain2, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-        rain3.getWorld().spawnParticle(fallingParticle, rain3, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-        rain4.getWorld().spawnParticle(fallingParticle, rain4, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        rain1.getWorld().spawnParticle(rainParticle, rain1, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        rain2.getWorld().spawnParticle(rainParticle, rain2, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        rain3.getWorld().spawnParticle(rainParticle, rain3, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        rain4.getWorld().spawnParticle(rainParticle, rain4, 1, 0.0D, 0.0D, 0.0D, 0.0D);
         rain1.getWorld().spawnParticle(Particle.CLOUD, cloud1, 1, 0.08D, 0.0D, 0.08D, 0.0D);
         rain2.getWorld().spawnParticle(Particle.CLOUD, cloud2, 1, 0.08D, 0.0D, 0.08D, 0.0D);
         rain3.getWorld().spawnParticle(Particle.CLOUD, cloud3, 1, 0.08D, 0.0D, 0.08D, 0.0D);
@@ -150,7 +155,7 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
         return fake == null ? session.getFinalReward() : fake;
     }
 
-    private Particle rainParticle() {
+    private Particle resolveRainParticle() {
         String configured = plugin.getConfig().getString("settings.animations.rainly.falling-particle", "DRIPPING_OBSIDIAN_TEAR");
         try {
             return Particle.valueOf(configured.toUpperCase());
@@ -178,7 +183,7 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
                 runtime.getLocation().getWorld().spawnParticle(Particle.ENCHANT, runtime.getLocation().clone().add(0.5, 0.3, 0.5), scaled(10), 0.2, 0.18, 0.2, 0.02);
                 runtime.getLocation().getWorld().spawnParticle(Particle.CLOUD, runtime.getLocation().clone().add(0.5, 0.55, 0.5), scaled(6), 0.35, 0.12, 0.35, 0.01);
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(2L));
     }
 
     private boolean isActive(OpeningSession session) {
@@ -208,12 +213,10 @@ public class RainlyOpeningAnimation implements OpeningAnimation {
     }
 
     private int scaled(int base) {
-        double scale = Math.max(0.1D, plugin.getConfig().getDouble("settings.animations.intensity.particles", 1.0D));
-        return Math.max(1, (int) Math.round(base * scale));
+        return performance.particles(base);
     }
 
     private float volume(float base) {
-        double scale = Math.max(0.0D, plugin.getConfig().getDouble("settings.animations.intensity.sound", 1.0D));
-        return (float) (base * scale);
+        return performance.volume(base);
     }
 }

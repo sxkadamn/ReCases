@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.List;
 
 public abstract class CaseItem {
+    private final String id;
     private final ItemStack icon;
     private final String name;
     private final List<String> actions;
@@ -13,11 +14,20 @@ public abstract class CaseItem {
     private final boolean rare;
 
     public CaseItem(String name, ItemStack icon, List<String> actions, int chance, boolean rare) {
+        this("", name, icon, actions, chance, rare);
+    }
+
+    public CaseItem(String id, String name, ItemStack icon, List<String> actions, int chance, boolean rare) {
+        this.id = id == null ? "" : id;
         this.icon = icon;
         this.name = name;
         this.actions = actions;
         this.chance = chance;
         this.rare = rare;
+    }
+
+    public String getId() {
+        return id;
     }
 
     public int getChance() {

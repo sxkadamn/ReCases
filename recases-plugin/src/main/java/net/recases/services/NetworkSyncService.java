@@ -37,7 +37,7 @@ public final class NetworkSyncService implements AutoCloseable {
             if (plugin.getConfig().getBoolean("settings.network-sync.sync-stats", true) && statsService.isUsingMysqlBackend()) {
                 statsService.reload();
                 if (plugin.isEnabled()) {
-                    Bukkit.getScheduler().runTask(plugin, () -> plugin.getLeaderboardHolograms().refreshAll());
+                    Bukkit.getScheduler().runTask(plugin, () -> plugin.getLeaderboardHolograms().requestRefresh());
                 }
             }
         }, intervalTicks, intervalTicks);

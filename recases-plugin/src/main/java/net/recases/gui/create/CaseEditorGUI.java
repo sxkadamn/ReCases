@@ -10,7 +10,11 @@ import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
 public class CaseEditorGUI {
 
@@ -77,6 +81,58 @@ public class CaseEditorGUI {
                     open(clicker, profileId);
                 }));
 
+        menu.setSlot(2, new MenuSlot(Material.REPEATER)
+                .setDisplay("#ffd166Guarantee")
+                .setLore(
+                        "#a8dadcCurrent: #ffffff" + profile.getGuaranteeAfterOpens(),
+                        "#a8dadcLeft/Right: +/-1",
+                        "#a8dadcShift+Left/Right: +/-10"
+                )
+                .setListener((clicker, click, openedMenu, slot) -> {
+                    int delta = 0;
+                    if (click == ClickType.LEFT) {
+                        delta = 1;
+                    } else if (click == ClickType.RIGHT) {
+                        delta = -1;
+                    } else if (click == ClickType.SHIFT_LEFT) {
+                        delta = 10;
+                    } else if (click == ClickType.SHIFT_RIGHT) {
+                        delta = -10;
+                    }
+                    if (delta == 0) {
+                        return;
+                    }
+
+                    int updated = plugin.getCaseService().updateProfileGuarantee(profileId, delta);
+                    if (updated >= 0) {
+                        plugin.getMessages().send(clicker, "messages.editor-saved", "#80ed99Changes were saved and runtime reloaded.");
+                        plugin.getMessages().send(clicker, "messages.editor-guarantee-updated", "#80ed99Guarantee after opens: #ffffff%amount%", "%amount%", String.valueOf(updated));
+                        open(clicker, profileId);
+                    }
+                }));
+
+        menu.setSlot(3, new MenuSlot(Material.BLAZE_POWDER)
+                .setDisplay("#74c0fcTest Animation")
+                .setLore("#a8dadcRun current profile animation on nearest instance")
+                .setListener((clicker, click, openedMenu, slot) -> {
+                    var runtime = findNearestRuntime(clicker);
+                    if (runtime == null) {
+                        plugin.getMessages().send(clicker, "messages.instance-not-found", "#ff6b6bNo nearby case instance was found.");
+                        return;
+                    }
+                    plugin.getCaseService().beginTestOpening(clicker, runtime, profileId, profile.getAnimationId());
+                }));
+
+        menu.setSlot(4, new MenuSlot(Material.COMPASS)
+                .setDisplay("#74c0fcSimulate x1000")
+                .setLore("#a8dadcRun 1000 simulated openings for this profile")
+                .setListener((clicker, click, openedMenu, slot) -> simulateProfile(clicker, profile, 1000)));
+
+        menu.setSlot(5, new MenuSlot(Material.CLOCK)
+                .setDisplay("#74c0fcSimulate x10000")
+                .setLore("#a8dadcRun 10000 simulated openings for this profile")
+                .setListener((clicker, click, openedMenu, slot) -> simulateProfile(clicker, profile, 10000)));
+
         int slotIndex = 9;
         for (int i = 0; i < rewardIds.size() && slotIndex < 54; i++, slotIndex++) {
             String rewardId = rewardIds.get(i);
@@ -133,5 +189,51 @@ public class CaseEditorGUI {
 
         plugin.getMenuManager().open(player, menu);
         plugin.getMessages().send(player, "messages.editor-opened", "#80ed99Открыт редактор профиля #ffffff%profile%", "%profile%", profileId);
+    }
+    private void simulateProfile(Player player, CaseProfile profile, int opens) {
+        Random random = new Random();
+        Map<String, Integer> rewardCounts = new LinkedHashMap<>();
+        int pity = 0;
+        int rareWins = 0;
+        int guaranteedHits = 0;
+
+        for (int i = 0; i < opens; i++) {
+            boolean guaranteed = profile.getGuaranteeAfterOpens() > 0
+                    && profile.hasRareRewards()
+                    && pity + 1 >= profile.getGuaranteeAfterOpens();
+            var reward = guaranteed ? profile.pickReward(random, true) : profile.pickReward(random);
+            if (reward == null) {
+                continue;
+            }
+
+            rewardCounts.merge(reward.getName(), 1, Integer::sum);
+            if (reward.isRare()) {
+                rareWins++;
+                pity = 0;
+            } else {
+                pity++;
+            }
+            if (guaranteed) {
+                guaranteedHits++;
+            }
+        }
+
+        plugin.getMessages().send(player, "messages.simulate-header", "#74c0fcSimulation for #ffffff%profile% #74c0fc(%opens% opens)", "%profile%", profile.getId(), "%opens%", String.valueOf(opens));
+        plugin.getMessages().send(player, "messages.simulate-summary", "#a8dadcRare wins: #ffffff%rare% #a8dadcGuaranteed hits: #ffffff%guaranteed%", "%rare%", String.valueOf(rareWins), "%guaranteed%", String.valueOf(guaranteedHits));
+        rewardCounts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()))
+                .limit(5)
+                .forEach(entry -> plugin.getMessages().send(player, "messages.simulate-line", "#ffffff%reward% #ffd166- %count%", "%reward%", entry.getKey(), "%count%", String.valueOf(entry.getValue())));
+    }
+
+    private net.recases.runtime.CaseRuntime findNearestRuntime(Player player) {
+        if (player == null || player.getWorld() == null) {
+            return null;
+        }
+
+        return plugin.getCaseService().getRuntimes().stream()
+                .filter(runtime -> runtime.getLocation().getWorld() != null && runtime.getLocation().getWorld().equals(player.getWorld()))
+                .min(Comparator.comparingDouble(runtime -> runtime.getLocation().distanceSquared(player.getLocation())))
+                .orElse(null);
     }
 }

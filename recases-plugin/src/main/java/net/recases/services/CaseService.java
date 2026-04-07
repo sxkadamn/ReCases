@@ -56,6 +56,7 @@ public class CaseService {
 
     public void clear() {
         runtimes.values().forEach(runtime -> {
+            plugin.getRewardAudit().discardPending(runtime.getSession());
             refundPendingKey(runtime.getSession());
             plugin.getSchematics().cleanup(runtime);
             runtime.remove();
@@ -81,6 +82,11 @@ public class CaseService {
         return profiles.get(profileId.toLowerCase());
     }
 
+    public CaseItem getReward(String profileId, String rewardId) {
+        CaseProfile profile = getProfile(profileId);
+        return profile == null ? null : profile.getReward(rewardId);
+    }
+
     public CaseItem getRandomReward(String profileId) {
         CaseProfile profile = getProfile(profileId);
         return profile == null ? null : profile.pickReward(random);
@@ -93,6 +99,16 @@ public class CaseService {
 
     public Collection<CaseRuntime> getRuntimes() {
         return Collections.unmodifiableCollection(runtimes.values());
+    }
+
+    public int getActiveOpeningCount() {
+        int count = 0;
+        for (CaseRuntime runtime : runtimes.values()) {
+            if (runtime.isOpening()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public List<String> getRuntimeIds() {
@@ -120,6 +136,7 @@ public class CaseService {
         if (refundKey) {
             refundPendingKey(session);
         }
+        plugin.getRewardAudit().discardPending(session);
 
         plugin.getSchematics().cleanup(runtime);
         runtime.resetOpeningState();
@@ -183,10 +200,80 @@ public class CaseService {
             return false;
         }
 
-        String animationId = plugin.getAnimations().resolveAnimationId(runtime, profile);
+        int pityBeforeOpen = plugin.getStats().getPity(player, profile.getId());
+        String animationId = plugin.getAnimations().resolveAnimationId(player, runtime, profile);
         String animationName = plugin.getAnimations().getDisplayName(animationId);
         int requiredSelections = plugin.getAnimations().getRequiredSelections(animationId);
-        OpeningSession session = new OpeningSession(player, profileId, animationId, requiredSelections, reward, guaranteedReward);
+        OpeningSession session = new OpeningSession(player, profileId, animationId, requiredSelections, reward, guaranteedReward, pityBeforeOpen, false);
+        session.setOpeningAnchor(plugin.getWorldService().createOpeningAnchor(
+                runtime.getLocation(),
+                player.getLocation(),
+                plugin.getConfig().getDouble("settings.opening-guard.owner-anchor-distance", 2.15D)
+        ));
+        runtime.setSession(session);
+        runtime.removeHologram();
+        plugin.getRewardAudit().trackOpening(player, runtime, session);
+        plugin.getSchematics().pasteAnimationScene(session, runtime);
+        if (!plugin.getAnimations().create(plugin, player, runtime, profile).play()) {
+            plugin.getRewardAudit().discardPending(session);
+            plugin.getSchematics().cleanup(runtime);
+            runtime.clearSession();
+            runtime.spawnHologram();
+            plugin.getMessages().send(player, "messages.case-unavailable", "#ff6b6bЭта точка кейса сейчас недоступна. Попробуйте позже или перезагрузите плагин.");
+            player.closeInventory();
+            return false;
+        }
+
+        plugin.getStorage().removeCase(player, profileId, 1);
+        session.markKeyConsumed();
+        plugin.getRewardAudit().markKeyConsumed(session);
+        plugin.getMessages().send(
+                player,
+                "messages.case-opening-started",
+                "#ffd166Вы начали открытие профиля #ffffff%case% #ffd166на точке #ffffff%instance% #ffd166с анимацией #ffffff%animation%#ffd166.",
+                "%case%", profileId,
+                "%instance%", runtime.getId(),
+                "%animation%", animationName
+        );
+        player.closeInventory();
+        return true;
+    }
+
+    public boolean beginTestOpening(Player player, CaseRuntime runtime, String profileId, String animationId) {
+        if (player == null || runtime == null) {
+            return false;
+        }
+
+        CaseProfile profile = getProfile(profileId);
+        if (profile == null) {
+            plugin.getMessages().send(player, "messages.case-not-found", "#ff6b6bCase profile '#ffffff%case%#ff6b6b' was not found.", "%case%", profileId);
+            return false;
+        }
+        if (!plugin.getAnimations().isRegistered(animationId)) {
+            plugin.getMessages().send(player, "messages.command-unknown", "#ff6b6bUnknown animation: #ffffff%animation%", "%animation%", animationId);
+            return false;
+        }
+        if (!runtime.isAvailable() || runtime.isOpening()) {
+            plugin.getMessages().send(player, "messages.case-unavailable", "#ff6b6bThis case location is currently unavailable. Try again later or reload the plugin.");
+            return false;
+        }
+
+        CaseItem reward = getRandomReward(profileId);
+        if (reward == null) {
+            plugin.getMessages().send(player, "messages.case-no-rewards", "#ff6b6bNo rewards are configured for this case profile.");
+            return false;
+        }
+
+        OpeningSession session = new OpeningSession(
+                player,
+                profileId,
+                animationId.toLowerCase(),
+                plugin.getAnimations().getRequiredSelections(animationId),
+                reward,
+                false,
+                0,
+                true
+        );
         session.setOpeningAnchor(plugin.getWorldService().createOpeningAnchor(
                 runtime.getLocation(),
                 player.getLocation(),
@@ -199,22 +286,17 @@ public class CaseService {
             plugin.getSchematics().cleanup(runtime);
             runtime.clearSession();
             runtime.spawnHologram();
-            plugin.getMessages().send(player, "messages.case-unavailable", "#ff6b6bЭта точка кейса сейчас недоступна. Попробуйте позже или перезагрузите плагин.");
-            player.closeInventory();
+            plugin.getMessages().send(player, "messages.case-unavailable", "#ff6b6bThis case location is currently unavailable. Try again later or reload the plugin.");
             return false;
         }
 
-        plugin.getStorage().removeCase(player, profileId, 1);
-        session.markKeyConsumed();
         plugin.getMessages().send(
                 player,
-                "messages.case-opening-started",
-                "#ffd166Вы начали открытие профиля #ffffff%case% #ffd166на точке #ffffff%instance% #ffd166с анимацией #ffffff%animation%#ffd166.",
-                "%case%", profileId,
-                "%instance%", runtime.getId(),
-                "%animation%", animationName
+                "messages.case-test-started",
+                "#74c0fcAnimation test started: #ffffff%animation% #74c0fcon #ffffff%instance%",
+                "%animation%", animationId.toLowerCase(),
+                "%instance%", runtime.getId()
         );
-        player.closeInventory();
         return true;
     }
 
@@ -321,6 +403,21 @@ public class CaseService {
         String next = ids.get((index + 1) % ids.size());
         setProfileAnimation(normalizedProfile, next);
         return next;
+    }
+
+    public int updateProfileGuarantee(String profileId, int delta) {
+        String normalizedProfile = normalizeId(profileId);
+        String path = "profiles." + normalizedProfile + ".guarantee.after-opens";
+        if (!plugin.getConfig().contains("profiles." + normalizedProfile)) {
+            return -1;
+        }
+
+        int current = Math.max(0, plugin.getConfig().getInt(path, 0));
+        int updated = Math.max(0, current + delta);
+        plugin.getConfig().set(path, updated);
+        plugin.saveConfigUtf8();
+        plugin.reloadPluginState();
+        return updated;
     }
 
     public List<String> getRewardIds(String profileId) {
@@ -520,6 +617,7 @@ public class CaseService {
                         String basePath = "profiles." + profileId + ".rewards." + rewardId;
                         String displayName = plugin.getConfig().getString(basePath + ".name", rewardId);
                         return new CaseItem(
+                                rewardId,
                                 displayName,
                                 itemFactory.create(
                                         plugin.getConfig().getString(basePath + ".material", "ITEM;STONE"),

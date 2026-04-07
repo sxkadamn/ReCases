@@ -44,14 +44,14 @@ public class VoidRiftOpeningAnimation extends AbstractEntityOpeningAnimation {
                         return;
                     }
 
-                    runtime.getLocation().getWorld().spawnParticle(premiumParticle(session, Particle.PORTAL, Particle.DRAGON_BREATH), center(position[0], 1.0, position[2]), 32, 0.28, 0.55, 0.28, 0.2);
+                    runtime.getLocation().getWorld().spawnParticle(premiumParticle(session, Particle.PORTAL, Particle.DRAGON_BREATH), center(position[0], 1.0, position[2]), scaled(32), 0.28, 0.55, 0.28, 0.2);
                     ArmorStand stand = (ArmorStand) runtime.getLocation().getWorld().spawnEntity(center(position[0], position[1], position[2]), EntityType.ARMOR_STAND);
                     configureArmorStandTarget(stand, themedLabel(session, "разлом", index + 1), previewDisplayItem(session, "ITEM;ENDER_EYE", "Разлом"));
                     stand.setBodyYaw(index * 90.0F);
                     trackEntity(session, stand);
-                    runtime.getLocation().getWorld().playSound(stand.getLocation(), premiumSound(session, Sound.ENTITY_ENDERMAN_TELEPORT, Sound.BLOCK_END_PORTAL_SPAWN), 0.65F, 0.9F);
+                    runtime.getLocation().getWorld().playSound(stand.getLocation(), premiumSound(session, Sound.ENTITY_ENDERMAN_TELEPORT, Sound.BLOCK_END_PORTAL_SPAWN), volume(0.65F), 0.9F);
                 }
-            }.runTaskLater(plugin, i * 6L);
+            }.runTaskLater(plugin, performance.cadence(i * 6L));
         }
 
         new BukkitRunnable() {
@@ -63,11 +63,11 @@ public class VoidRiftOpeningAnimation extends AbstractEntityOpeningAnimation {
                     cancel();
                     return;
                 }
-                runtime.getLocation().getWorld().spawnParticle(premiumParticle(session, Particle.PORTAL, Particle.DRAGON_BREATH), runtime.getLocation().clone().add(0.5, 1.0, 0.5), 36, 1.4, 0.45, 1.4, 0.24);
-                runtime.getLocation().getWorld().spawnParticle(premiumParticle(session, Particle.REVERSE_PORTAL, Particle.GLOW), runtime.getLocation().clone().add(0.5, 1.65, 0.5), 10, 0.2, 0.35, 0.2, 0.01);
-                runtime.getLocation().getWorld().playSound(runtime.getLocation(), premiumSound(session, Sound.BLOCK_PORTAL_AMBIENT, Sound.BLOCK_END_PORTAL_FRAME_FILL), 0.4F, 0.7F + (tick * 0.02F));
+                runtime.getLocation().getWorld().spawnParticle(premiumParticle(session, Particle.PORTAL, Particle.DRAGON_BREATH), runtime.getLocation().clone().add(0.5, 1.0, 0.5), scaled(36), 1.4, 0.45, 1.4, 0.24);
+                runtime.getLocation().getWorld().spawnParticle(premiumParticle(session, Particle.REVERSE_PORTAL, Particle.GLOW), runtime.getLocation().clone().add(0.5, 1.65, 0.5), scaled(10), 0.2, 0.35, 0.2, 0.01);
+                runtime.getLocation().getWorld().playSound(runtime.getLocation(), premiumSound(session, Sound.BLOCK_PORTAL_AMBIENT, Sound.BLOCK_END_PORTAL_FRAME_FILL), volume(0.4F), 0.7F + (tick * 0.02F));
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(2L));
 
         promptSelectionLater(session, 34L);
         pulseTargets(session, premiumParticle(session, Particle.DRAGON_BREATH, Particle.GLOW), 7L, 18, 0.95, 10, 0.16, 0.01);

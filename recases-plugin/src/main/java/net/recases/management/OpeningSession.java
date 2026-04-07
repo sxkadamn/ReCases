@@ -13,6 +13,7 @@ import java.util.UUID;
 public class OpeningSession {
 
     private final UUID openingId;
+    private final UUID transactionId;
     private final UUID playerId;
     private final String playerName;
     private final String selectedCase;
@@ -20,6 +21,9 @@ public class OpeningSession {
     private final int requiredSelections;
     private final CaseItem finalReward;
     private final boolean guaranteedReward;
+    private final int pityBeforeOpen;
+    private final long startedAt;
+    private final boolean testMode;
     private final Set<Location> chestLocations = new LinkedHashSet<>();
     private final Set<Location> platformLocations = new LinkedHashSet<>();
     private final Set<UUID> targetEntityIds = new LinkedHashSet<>();
@@ -29,7 +33,13 @@ public class OpeningSession {
     private boolean rewardGranted;
 
     public OpeningSession(Player player, String selectedCase, String animationId, int requiredSelections, CaseItem finalReward, boolean guaranteedReward) {
+        this(player, selectedCase, animationId, requiredSelections, finalReward, guaranteedReward, 0, false);
+    }
+
+    public OpeningSession(Player player, String selectedCase, String animationId, int requiredSelections, CaseItem finalReward,
+                          boolean guaranteedReward, int pityBeforeOpen, boolean testMode) {
         this.openingId = UUID.randomUUID();
+        this.transactionId = UUID.randomUUID();
         this.playerId = player.getUniqueId();
         this.playerName = player.getName();
         this.selectedCase = selectedCase;
@@ -37,10 +47,17 @@ public class OpeningSession {
         this.requiredSelections = requiredSelections;
         this.finalReward = finalReward;
         this.guaranteedReward = guaranteedReward;
+        this.pityBeforeOpen = Math.max(0, pityBeforeOpen);
+        this.startedAt = System.currentTimeMillis();
+        this.testMode = testMode;
     }
 
     public UUID getOpeningId() {
         return openingId;
+    }
+
+    public UUID getTransactionId() {
+        return transactionId;
     }
 
     public UUID getPlayerId() {
@@ -69,6 +86,18 @@ public class OpeningSession {
 
     public boolean isGuaranteedReward() {
         return guaranteedReward;
+    }
+
+    public int getPityBeforeOpen() {
+        return pityBeforeOpen;
+    }
+
+    public long getStartedAt() {
+        return startedAt;
+    }
+
+    public boolean isTestMode() {
+        return testMode;
     }
 
     public Set<Location> getChestLocations() {

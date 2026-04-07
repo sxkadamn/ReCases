@@ -18,7 +18,7 @@ import java.util.Set;
 
 public class ConfigService {
 
-    private static final int CURRENT_VERSION = 9;
+    private static final int CURRENT_VERSION = 11;
     private static final Set<String> KNOWN_ANIMATIONS = Set.of(
             "classic",
             "circle",
@@ -31,6 +31,8 @@ public class ConfigService {
             "anchor-rise",
             "rainly"
     );
+    private static final Set<String> KNOWN_PERFORMANCE_PROFILES = Set.of("pretty", "balanced", "lite");
+    private static final Set<String> KNOWN_RECOVERY_MODES = Set.of("grant-if-possible", "refund");
 
     private final JavaPlugin plugin;
 
@@ -123,6 +125,36 @@ public class ConfigService {
 
         if (plugin.getConfig().getConfigurationSection("settings.presets") == null) {
             plugin.getConfig().set("settings.presets.folder", "presets");
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.animations.performance") == null) {
+            plugin.getConfig().set("settings.animations.performance.profile", "balanced");
+            plugin.getConfig().set("settings.animations.performance.adaptive-load", true);
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.animations.dynamic-selection") == null) {
+            plugin.getConfig().set("settings.animations.dynamic-selection.enabled", true);
+            plugin.getConfig().set("settings.animations.dynamic-selection.max-player-distance", 24.0D);
+            plugin.getConfig().set("settings.animations.dynamic-selection.active-openings-threshold", 4);
+            plugin.getConfig().set("settings.animations.dynamic-selection.min-tps", 18.5D);
+            plugin.getConfig().set("settings.animations.dynamic-selection.distant-fallback", "classic");
+            plugin.getConfig().set("settings.animations.dynamic-selection.overload-fallback", "classic");
+            plugin.getConfig().set("settings.animations.dynamic-selection.medium-overload-fallback", "circle");
+        }
+
+        if (!plugin.getConfig().contains("settings.server-id")) {
+            plugin.getConfig().set("settings.server-id", "default");
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.opening-recovery") == null) {
+            plugin.getConfig().set("settings.opening-recovery.mode", "grant-if-possible");
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.webhooks.discord.embed") == null) {
+            plugin.getConfig().set("settings.webhooks.discord.embed.rare-color", 7929855);
+            plugin.getConfig().set("settings.webhooks.discord.embed.guaranteed-color", 16766720);
+            plugin.getConfig().set("settings.webhooks.discord.embed.default-color", 7631988);
+            plugin.getConfig().set("settings.webhooks.discord.embed.thumbnail-url", "");
         }
 
         migrateRewardActions();
@@ -278,6 +310,14 @@ public class ConfigService {
             warnings.add("settings.presets.folder cannot be empty.");
         }
 
+        String recoveryMode = plugin.getConfig().getString("settings.opening-recovery.mode", "grant-if-possible").trim().toLowerCase();
+        if (!KNOWN_RECOVERY_MODES.contains(recoveryMode)) {
+            warnings.add("settings.opening-recovery.mode must be one of: grant-if-possible, refund.");
+        }
+        if (plugin.getConfig().getString("settings.server-id", "default").trim().isEmpty()) {
+            warnings.add("settings.server-id cannot be empty.");
+        }
+
         if (warnings.isEmpty()) {
             plugin.getLogger().info("Config validation passed: no issues found.");
             return;
@@ -325,6 +365,10 @@ public class ConfigService {
         double shakeAmplitude = plugin.getConfig().getDouble("settings.animations.winner-item.shake-amplitude", 0.06D);
         double levitationHeight = plugin.getConfig().getDouble("settings.animations.winner-item.levitation-height", 0.45D);
         double bobStrength = plugin.getConfig().getDouble("settings.animations.winner-item.bob-strength", 0.12D);
+        String performanceProfile = plugin.getConfig().getString("settings.animations.performance.profile", "balanced");
+        String distantFallback = plugin.getConfig().getString("settings.animations.dynamic-selection.distant-fallback", "classic");
+        String overloadFallback = plugin.getConfig().getString("settings.animations.dynamic-selection.overload-fallback", "classic");
+        String mediumFallback = plugin.getConfig().getString("settings.animations.dynamic-selection.medium-overload-fallback", "circle");
 
         if (particleIntensity <= 0.0D) {
             warnings.add("settings.animations.intensity.particles must be greater than 0.");
@@ -340,6 +384,18 @@ public class ConfigService {
         }
         if (bobStrength < 0.0D) {
             warnings.add("settings.animations.winner-item.bob-strength cannot be negative.");
+        }
+        if (!KNOWN_PERFORMANCE_PROFILES.contains(performanceProfile == null ? "" : performanceProfile.trim().toLowerCase())) {
+            warnings.add("settings.animations.performance.profile must be one of: pretty, balanced, lite.");
+        }
+        if (!isKnownAnimation(distantFallback)) {
+            warnings.add("settings.animations.dynamic-selection.distant-fallback must reference a known animation.");
+        }
+        if (!isKnownAnimation(overloadFallback)) {
+            warnings.add("settings.animations.dynamic-selection.overload-fallback must reference a known animation.");
+        }
+        if (!isKnownAnimation(mediumFallback)) {
+            warnings.add("settings.animations.dynamic-selection.medium-overload-fallback must reference a known animation.");
         }
 
         ConfigurationSection schematicAnimations = plugin.getConfig().getConfigurationSection("settings.schematics.animations");

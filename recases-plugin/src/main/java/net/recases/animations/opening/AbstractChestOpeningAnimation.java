@@ -18,11 +18,13 @@ public abstract class AbstractChestOpeningAnimation implements OpeningAnimation 
     protected final PluginContext plugin;
     protected final Player player;
     protected final CaseRuntime runtime;
+    protected final AnimationPerformance performance;
 
     protected AbstractChestOpeningAnimation(PluginContext plugin, Player player, CaseRuntime runtime) {
         this.plugin = plugin;
         this.player = player;
         this.runtime = runtime;
+        this.performance = AnimationPerformance.create(plugin);
     }
 
     @Override
@@ -105,9 +107,9 @@ public abstract class AbstractChestOpeningAnimation implements OpeningAnimation 
         session.getPlatformLocations().add(platform.getLocation());
 
         chest.getWorld().spawnParticle(getChestSpawnParticle(session), chestLocation.toCenterLocation(), 10, 0.25, 0.25, 0.25, 0.01);
-        chest.getWorld().playSound(chestLocation, getChestSpawnSound(session), 0.7F, isPremiumReward(session) ? 0.85F : 1.4F);
+        chest.getWorld().playSound(chestLocation, getChestSpawnSound(session), volume(0.7F), isPremiumReward(session) ? 0.85F : 1.4F);
         if (isPremiumReward(session)) {
-            chest.getWorld().spawnParticle(Particle.GLOW, chestLocation.toCenterLocation().add(0.0, 0.6, 0.0), 12, 0.18, 0.18, 0.18, 0.01);
+            chest.getWorld().spawnParticle(Particle.GLOW, chestLocation.toCenterLocation().add(0.0, 0.6, 0.0), scaled(12), 0.18, 0.18, 0.18, 0.01);
         }
     }
 
@@ -128,5 +130,13 @@ public abstract class AbstractChestOpeningAnimation implements OpeningAnimation 
             return session.getFinalReward().getIcon();
         }
         return plugin.getItemFactory().create("ITEM;" + fallbackMaterial, fallbackName);
+    }
+
+    protected int scaled(int base) {
+        return performance.particles(base);
+    }
+
+    protected float volume(float base) {
+        return performance.volume(base);
     }
 }

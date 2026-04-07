@@ -29,11 +29,13 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
     private final PluginContext plugin;
     private final Player player;
     private final CaseRuntime runtime;
+    private final AnimationPerformance performance;
 
     public SwordsOpeningAnimation(PluginContext plugin, Player player, CaseRuntime runtime) {
         this.plugin = plugin;
         this.player = player;
         this.runtime = runtime;
+        this.performance = AnimationPerformance.create(plugin);
     }
 
     @Override
@@ -57,7 +59,7 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
                 }
                 spawnPedestals(session);
             }
-        }.runTaskLater(plugin, 10L);
+        }.runTaskLater(plugin, performance.cadence(10L));
         return true;
     }
 
@@ -76,10 +78,10 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
                     block.setType(Material.ANDESITE);
                     block.setMetadata("case_open_chest", new FixedMetadataValue(plugin, runtime.getId()));
                     session.getChestLocations().add(blockLocation);
-                    block.getWorld().spawnParticle(Particle.BLOCK, blockLocation.toCenterLocation(), 14, 0.22, 0.22, 0.22, Material.ANDESITE.createBlockData());
+                    block.getWorld().spawnParticle(Particle.BLOCK, blockLocation.toCenterLocation(), scaled(14), 0.22, 0.22, 0.22, Material.ANDESITE.createBlockData());
                     block.getWorld().playSound(blockLocation, Sound.BLOCK_STONE_PLACE, volume(0.9F), 1.0F);
                 }
-            }.runTaskLater(plugin, i * 3L);
+            }.runTaskLater(plugin, performance.cadence(i * 3L));
 
             new BukkitRunnable() {
                 @Override
@@ -89,7 +91,7 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
                     }
                     spawnSword(session, blockLocation);
                 }
-            }.runTaskLater(plugin, 14L + (i * 4L));
+            }.runTaskLater(plugin, performance.cadence(14L + (i * 4L)));
         }
 
         new BukkitRunnable() {
@@ -100,7 +102,7 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
                 }
                 promptSelection();
             }
-        }.runTaskLater(plugin, 42L);
+        }.runTaskLater(plugin, performance.cadence(42L));
     }
 
     private void spawnSword(OpeningSession session, Location blockLocation) {
@@ -122,12 +124,12 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
         stand.setMetadata(SWORDS_DECOR_METADATA, new FixedMetadataValue(plugin, runtime.getId()));
         session.trackEntity(stand);
 
-        blockLocation.getWorld().spawnParticle(Particle.WITCH, start.clone().add(0.0, 0.35, 0.0), 20, 0.0, 0.0, 0.0, 0.01);
-        blockLocation.getWorld().spawnParticle(Particle.REVERSE_PORTAL, start.clone().add(0.0, 0.35, 0.0), 20, 0.0, 0.0, 0.0, 0.08);
+        blockLocation.getWorld().spawnParticle(Particle.WITCH, start.clone().add(0.0, 0.35, 0.0), scaled(20), 0.0, 0.0, 0.0, 0.01);
+        blockLocation.getWorld().spawnParticle(Particle.REVERSE_PORTAL, start.clone().add(0.0, 0.35, 0.0), scaled(20), 0.0, 0.0, 0.0, 0.08);
         blockLocation.getWorld().playSound(start, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, volume(1.0F), 1.0F);
 
         new BukkitRunnable() {
-            private int step;
+            private int elapsed;
 
             @Override
             public void run() {
@@ -136,8 +138,8 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                step++;
-                double progress = Math.min(1.0D, step / 10.0D);
+                elapsed += performance.motionInterval();
+                double progress = Math.min(1.0D, elapsed / 10.0D);
                 double x = lerp(start.getX(), end.getX(), progress);
                 double z = lerp(start.getZ(), end.getZ(), progress);
                 double y = lerp(start.getY(), end.getY(), progress) + (Math.sin(progress * Math.PI) * 1.4D);
@@ -145,13 +147,13 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
                 if (progress >= 1.0D) {
                     blockLocation.getBlock().setType(Material.COBBLESTONE);
                     blockLocation.getBlock().setMetadata("case_open_chest", new FixedMetadataValue(plugin, runtime.getId()));
-                    blockLocation.getWorld().spawnParticle(Particle.CLOUD, end.clone().add(0.5, 0.9, 0.5), 8, 0.05, 0.05, 0.05, 0.03);
+                    blockLocation.getWorld().spawnParticle(Particle.CLOUD, end.clone().add(0.5, 0.9, 0.5), scaled(8), 0.05, 0.05, 0.05, 0.03);
                     blockLocation.getWorld().playSound(end, Sound.ITEM_TRIDENT_HIT_GROUND, volume(1.0F), 1.0F);
                     blockLocation.getWorld().playSound(end, Sound.ITEM_TRIDENT_RETURN, volume(1.0F), 1.4F);
                     cancel();
                 }
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+        }.runTaskTimer(plugin, 0L, performance.motionInterval());
     }
 
     private void promptSelection() {
@@ -199,14 +201,17 @@ public class SwordsOpeningAnimation implements OpeningAnimation {
                     cancel();
                     return;
                 }
-                runtime.getLocation().getWorld().spawnParticle(Particle.ENCHANT, runtime.getLocation().clone().add(0.5, 0.25, 0.5), 10, 0.2, 0.18, 0.2, 0.02);
-                runtime.getLocation().getWorld().spawnParticle(Particle.CRIT, runtime.getLocation().clone().add(0.5, 0.45, 0.5), 6, 0.35, 0.12, 0.35, 0.01);
+                runtime.getLocation().getWorld().spawnParticle(Particle.ENCHANT, runtime.getLocation().clone().add(0.5, 0.25, 0.5), scaled(10), 0.2, 0.18, 0.2, 0.02);
+                runtime.getLocation().getWorld().spawnParticle(Particle.CRIT, runtime.getLocation().clone().add(0.5, 0.45, 0.5), scaled(6), 0.35, 0.12, 0.35, 0.01);
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(2L));
     }
 
     private float volume(float base) {
-        double scale = Math.max(0.0D, plugin.getConfig().getDouble("settings.animations.intensity.sound", 1.0D));
-        return (float) (base * scale);
+        return performance.volume(base);
+    }
+
+    private int scaled(int base) {
+        return performance.particles(base);
     }
 }

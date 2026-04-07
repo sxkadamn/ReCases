@@ -18,6 +18,7 @@ import net.recases.animations.opening.VoidRiftOpeningAnimation;
 import net.recases.animations.opening.WheelOpeningAnimation;
 import net.recases.app.PluginContext;
 import net.recases.domain.CaseProfile;
+import net.recases.management.OpeningSession;
 import net.recases.runtime.CaseRuntime;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -29,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public class AnimationService implements OpeningAnimationRegistry {
 
@@ -47,6 +49,8 @@ public class AnimationService implements OpeningAnimationRegistry {
     private static final int METEOR_DROP_SELECTIONS = 4;
     private static final int VOID_RIFT_SELECTIONS = 4;
     private static final int SWORDS_SELECTIONS = 4;
+    private static final Set<String> HEAVY_ANIMATIONS = Set.of(WHEEL, SPHERE, NEURAL, ANCHOR_RISE, RAINLY);
+    private static final Set<String> MEDIUM_ANIMATIONS = Set.of(VOID_RIFT, SWORDS, METEOR_DROP);
 
     private final JavaPlugin plugin;
     private final Map<String, OpeningAnimationRegistration> animations = new LinkedHashMap<>();
@@ -61,7 +65,11 @@ public class AnimationService implements OpeningAnimationRegistry {
     }
 
     public String resolveAnimationId(CaseRuntime runtime, CaseProfile profile) {
-        String configured = runtime.getAnimationId();
+        OpeningSession session = runtime == null ? null : runtime.getSession();
+        String configured = session == null ? "" : session.getAnimationId();
+        if (configured == null || configured.trim().isEmpty()) {
+            configured = runtime.getAnimationId();
+        }
         if (configured == null || configured.trim().isEmpty()) {
             configured = profile.getAnimationId();
         }
@@ -76,6 +84,10 @@ public class AnimationService implements OpeningAnimationRegistry {
 
         plugin.getLogger().warning("Unknown animation '" + animationId + "'. Falling back to '" + CLASSIC + "'.");
         return CLASSIC;
+    }
+
+    public String resolveAnimationId(Player player, CaseRuntime runtime, CaseProfile profile) {
+        return applyAdaptiveFallback(player, runtime, resolveAnimationId(runtime, profile));
     }
 
     public OpeningAnimation create(PluginContext context, Player player, CaseRuntime runtime, CaseProfile profile) {
@@ -159,6 +171,67 @@ public class AnimationService implements OpeningAnimationRegistry {
 
     private void registerBuiltIn(String id, String displayName, int requiredSelections, OpeningAnimationFactory factory) {
         animations.put(id, OpeningAnimationRegistration.create(plugin, id, displayName, requiredSelections, factory));
+    }
+
+    private String applyAdaptiveFallback(Player player, CaseRuntime runtime, String animationId) {
+        OpeningSession session = runtime == null ? null : runtime.getSession();
+        if (session != null && session.isTestMode()) {
+            return animationId;
+        }
+        if (!plugin.getConfig().getBoolean("settings.animations.dynamic-selection.enabled", true)
+                || player == null
+                || runtime == null) {
+            return animationId;
+        }
+
+        boolean distant = isPlayerFarFromCase(player, runtime);
+        boolean overloaded = isServerOverloaded();
+        if (distant) {
+            return sanitizeFallback(plugin.getConfig().getString("settings.animations.dynamic-selection.distant-fallback", CLASSIC));
+        }
+        if (overloaded && HEAVY_ANIMATIONS.contains(animationId)) {
+            return sanitizeFallback(plugin.getConfig().getString("settings.animations.dynamic-selection.overload-fallback", CLASSIC));
+        }
+        if (overloaded && MEDIUM_ANIMATIONS.contains(animationId)) {
+            return sanitizeFallback(plugin.getConfig().getString("settings.animations.dynamic-selection.medium-overload-fallback", CIRCLE));
+        }
+        return animationId;
+    }
+
+    private boolean isPlayerFarFromCase(Player player, CaseRuntime runtime) {
+        if (player.getWorld() == null
+                || runtime.getLocation().getWorld() == null
+                || !player.getWorld().equals(runtime.getLocation().getWorld())) {
+            return true;
+        }
+
+        double maxDistance = plugin.getConfig().getDouble("settings.animations.dynamic-selection.max-player-distance", 24.0D);
+        return player.getLocation().distance(runtime.getLocation().clone().add(0.5D, 0.0D, 0.5D)) > maxDistance;
+    }
+
+    private boolean isServerOverloaded() {
+        PluginContext context = plugin instanceof PluginContext ? (PluginContext) plugin : null;
+        int activeOpenings = context == null ? 0 : context.getCaseService().getActiveOpeningCount();
+        int threshold = plugin.getConfig().getInt("settings.animations.dynamic-selection.active-openings-threshold", 4);
+        double minTps = plugin.getConfig().getDouble("settings.animations.dynamic-selection.min-tps", 18.5D);
+        double recentTps = readRecentTps();
+        return activeOpenings >= Math.max(1, threshold) || (recentTps > 0.0D && recentTps < minTps);
+    }
+
+    private double readRecentTps() {
+        try {
+            Object result = plugin.getServer().getClass().getMethod("getTPS").invoke(plugin.getServer());
+            if (result instanceof double[] values && values.length > 0) {
+                return values[0];
+            }
+        } catch (ReflectiveOperationException ignored) {
+        }
+        return -1.0D;
+    }
+
+    private String sanitizeFallback(String animationId) {
+        String normalized = normalizeIdOrDefault(animationId);
+        return isRegistered(normalized) ? normalized : CLASSIC;
     }
 
     private OpeningAnimationFactory classicFactory() {

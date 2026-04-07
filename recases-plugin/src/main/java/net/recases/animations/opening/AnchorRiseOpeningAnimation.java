@@ -34,11 +34,13 @@ public class AnchorRiseOpeningAnimation implements OpeningAnimation {
     private final PluginContext plugin;
     private final Player player;
     private final CaseRuntime runtime;
+    private final AnimationPerformance performance;
 
     public AnchorRiseOpeningAnimation(PluginContext plugin, Player player, CaseRuntime runtime) {
         this.plugin = plugin;
         this.player = player;
         this.runtime = runtime;
+        this.performance = AnimationPerformance.create(plugin);
     }
 
     @Override
@@ -76,7 +78,7 @@ public class AnchorRiseOpeningAnimation implements OpeningAnimation {
 
                 updateAnchorCharge(block, charge++);
             }
-        }.runTaskTimer(plugin, 0L, 10L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(10L));
 
         return true;
     }
@@ -103,7 +105,8 @@ public class AnchorRiseOpeningAnimation implements OpeningAnimation {
                     return;
                 }
 
-                if (tick++ >= totalDuration()) {
+                tick += performance.motionInterval();
+                if (tick >= totalDuration()) {
                     cancel();
                     finish(session, stand, block, originalData);
                     return;
@@ -127,7 +130,7 @@ public class AnchorRiseOpeningAnimation implements OpeningAnimation {
                     fireworksLaunched = true;
                 }
 
-                stand.teleport(stand.getLocation().add(velocity));
+                stand.teleport(stand.getLocation().add(velocity.clone().multiply(performance.motionInterval())));
 
                 if (phase == 2 && stand.getLocation().distanceSquared(start) < 0.25D) {
                     velocity.multiply(0.0D);
@@ -136,7 +139,7 @@ public class AnchorRiseOpeningAnimation implements OpeningAnimation {
 
                 spawnTrailParticles(stand.getLocation(), phase);
             }
-        }.runTaskTimer(plugin, 0L, 1L);
+        }.runTaskTimer(plugin, 0L, performance.motionInterval());
     }
 
     private void finish(OpeningSession session, ArmorStand stand, Block block, BlockData originalData) {
@@ -165,7 +168,7 @@ public class AnchorRiseOpeningAnimation implements OpeningAnimation {
 
                 updateAnchorCharge(block, charge--);
             }
-        }.runTaskTimer(plugin, 0L, 10L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(10L));
     }
 
     private ArmorStand createArmorStand(Location location, ItemStack item) {
@@ -295,8 +298,7 @@ public class AnchorRiseOpeningAnimation implements OpeningAnimation {
     }
 
     private int scaled(int base) {
-        double scale = Math.max(0.1D, plugin.getConfig().getDouble("settings.animations.intensity.particles", 1.0D));
-        return Math.max(1, (int) Math.round(base * scale));
+        return performance.particles(base);
     }
 
     private void startPulse() {
@@ -312,11 +314,10 @@ public class AnchorRiseOpeningAnimation implements OpeningAnimation {
                 runtime.getLocation().getWorld().spawnParticle(Particle.ENCHANT, runtime.getLocation().clone().add(0.5, 0.85, 0.5), scaled(10), 0.18, 0.18, 0.18, 0.02);
                 runtime.getLocation().getWorld().spawnParticle(Particle.GLOW, runtime.getLocation().clone().add(0.5, 1.05, 0.5), scaled(6), 0.32, 0.15, 0.32, 0.01);
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(2L));
     }
 
     private float volume(float base) {
-        double scale = Math.max(0.0D, plugin.getConfig().getDouble("settings.animations.intensity.sound", 1.0D));
-        return (float) (base * scale);
+        return performance.volume(base);
     }
 }

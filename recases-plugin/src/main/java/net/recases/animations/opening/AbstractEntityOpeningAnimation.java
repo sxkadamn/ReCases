@@ -25,11 +25,13 @@ public abstract class AbstractEntityOpeningAnimation implements OpeningAnimation
     protected final PluginContext plugin;
     protected final Player player;
     protected final CaseRuntime runtime;
+    protected final AnimationPerformance performance;
 
     protected AbstractEntityOpeningAnimation(PluginContext plugin, Player player, CaseRuntime runtime) {
         this.plugin = plugin;
         this.player = player;
         this.runtime = runtime;
+        this.performance = AnimationPerformance.create(plugin);
     }
 
     @Override
@@ -71,13 +73,13 @@ public abstract class AbstractEntityOpeningAnimation implements OpeningAnimation
         runtime.getLocation().getWorld().spawnParticle(
                 Particle.ENCHANT,
                 runtime.getLocation().clone().add(0.5, 1.0, 0.5),
-                24,
+                scaled(24),
                 0.7,
                 0.35,
                 0.7,
                 0.15
         );
-        runtime.getLocation().getWorld().playSound(runtime.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, 0.8F, 1.1F);
+        runtime.getLocation().getWorld().playSound(runtime.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, volume(0.8F), 1.1F);
     }
 
     protected void afterSpawn(OpeningSession session) {
@@ -191,7 +193,7 @@ public abstract class AbstractEntityOpeningAnimation implements OpeningAnimation
             public void run() {
                 promptSelection(session);
             }
-        }.runTaskLater(plugin, delayTicks);
+        }.runTaskLater(plugin, performance.cadence(delayTicks));
     }
 
     protected void pulseTargets(OpeningSession session, Particle particle, long periodTicks, int iterations, double yOffset, int count, double spread, double speed) {
@@ -211,7 +213,7 @@ public abstract class AbstractEntityOpeningAnimation implements OpeningAnimation
                         entity.getWorld().spawnParticle(
                                 particle,
                                 entity.getLocation().clone().add(0.0, yOffset, 0.0),
-                                count,
+                                scaled(count),
                                 spread,
                                 spread,
                                 spread,
@@ -220,6 +222,14 @@ public abstract class AbstractEntityOpeningAnimation implements OpeningAnimation
                     }
                 }
             }
-        }.runTaskTimer(plugin, 0L, periodTicks);
+        }.runTaskTimer(plugin, 0L, performance.cadence(periodTicks));
+    }
+
+    protected int scaled(int base) {
+        return performance.particles(base);
+    }
+
+    protected float volume(float base) {
+        return performance.volume(base);
     }
 }

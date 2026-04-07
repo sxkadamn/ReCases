@@ -46,6 +46,16 @@ public class ReCasesExpansion extends PlaceholderExpansion {
         if ("last_reward".equals(normalized)) {
             return emptyIfBlank(player == null ? "" : plugin.getStats().getLastRewardName(player));
         }
+        if ("pity".equals(normalized)) {
+            if (player == null) {
+                return "0";
+            }
+            String lastProfile = plugin.getStats().getLastRewardProfile(player);
+            return lastProfile.isEmpty() ? "0" : String.valueOf(plugin.getStats().getPity(player, lastProfile));
+        }
+        if ("opens_today".equals(normalized)) {
+            return player == null ? "0" : String.valueOf(plugin.getStats().getOpensToday(player, null));
+        }
         if ("global_opens".equals(normalized)) {
             return String.valueOf(plugin.getStats().getGlobalOpens());
         }
@@ -64,6 +74,9 @@ public class ReCasesExpansion extends PlaceholderExpansion {
         if ("rare_wins".equals(normalized)) {
             return player == null ? "0" : String.valueOf(plugin.getStats().getRareWins(player, null));
         }
+        if ("rare_count".equals(normalized)) {
+            return player == null ? "0" : String.valueOf(plugin.getStats().getRareWins(player, null));
+        }
         if ("guaranteed_hits".equals(normalized)) {
             return player == null ? "0" : String.valueOf(plugin.getStats().getGuaranteedWins(player, null));
         }
@@ -79,6 +92,12 @@ public class ReCasesExpansion extends PlaceholderExpansion {
         }
         if (normalized.startsWith("rare_wins_")) {
             return player == null ? "0" : String.valueOf(plugin.getStats().getRareWins(player, normalized.substring("rare_wins_".length())));
+        }
+        if (normalized.startsWith("rare_count_")) {
+            return player == null ? "0" : String.valueOf(plugin.getStats().getRareWins(player, normalized.substring("rare_count_".length())));
+        }
+        if (normalized.startsWith("opens_today_")) {
+            return player == null ? "0" : String.valueOf(plugin.getStats().getOpensToday(player, normalized.substring("opens_today_".length())));
         }
         if (normalized.startsWith("guaranteed_hits_")) {
             return player == null ? "0" : String.valueOf(plugin.getStats().getGuaranteedWins(player, normalized.substring("guaranteed_hits_".length())));

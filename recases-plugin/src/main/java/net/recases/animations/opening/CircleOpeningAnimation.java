@@ -45,11 +45,11 @@ public class CircleOpeningAnimation extends AbstractChestOpeningAnimation {
                 double angle = step * (Math.PI / 8);
                 double x = Math.cos(angle) * 3.4;
                 double z = Math.sin(angle) * 3.4;
-                runtime.getLocation().getWorld().spawnParticle(isPremiumReward(session) ? Particle.WITCH : Particle.END_ROD, runtime.getLocation().clone().add(0.5 + x, 1.0, 0.5 + z), 8, 0.08, 0.08, 0.08, 0.01);
-                runtime.getLocation().getWorld().spawnParticle(isPremiumReward(session) ? Particle.DRAGON_BREATH : Particle.GLOW, runtime.getLocation().clone().add(0.5 - x, 0.6, 0.5 - z), 4, 0.04, 0.04, 0.04, 0.0);
-                runtime.getLocation().getWorld().playSound(runtime.getLocation(), isPremiumReward(session) ? Sound.BLOCK_AMETHYST_CLUSTER_HIT : Sound.BLOCK_NOTE_BLOCK_CHIME, 0.45F, 0.8F + (step * 0.03F));
+                runtime.getLocation().getWorld().spawnParticle(isPremiumReward(session) ? Particle.WITCH : Particle.END_ROD, runtime.getLocation().clone().add(0.5 + x, 1.0, 0.5 + z), scaled(8), 0.08, 0.08, 0.08, 0.01);
+                runtime.getLocation().getWorld().spawnParticle(isPremiumReward(session) ? Particle.DRAGON_BREATH : Particle.GLOW, runtime.getLocation().clone().add(0.5 - x, 0.6, 0.5 - z), scaled(4), 0.04, 0.04, 0.04, 0.0);
+                runtime.getLocation().getWorld().playSound(runtime.getLocation(), isPremiumReward(session) ? Sound.BLOCK_AMETHYST_CLUSTER_HIT : Sound.BLOCK_NOTE_BLOCK_CHIME, volume(0.45F), 0.8F + (step * 0.03F));
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        }.runTaskTimer(plugin, 0L, performance.cadence(2L));
     }
 
     @Override
@@ -65,7 +65,7 @@ public class CircleOpeningAnimation extends AbstractChestOpeningAnimation {
                     }
                     spawnChestTarget(session, center(offset[0], offset[1], offset[2]), isPremiumReward(session) ? Material.PURPUR_BLOCK : Material.SMOOTH_STONE);
                 }
-            }.runTaskLater(plugin, delay);
+            }.runTaskLater(plugin, performance.cadence(delay));
         }
     }
 
@@ -81,10 +81,10 @@ public class CircleOpeningAnimation extends AbstractChestOpeningAnimation {
                     return;
                 }
 
-                runtime.getLocation().getWorld().spawnParticle(isPremiumReward(session) ? Particle.DRAGON_BREATH : Particle.GLOW, runtime.getLocation().clone().add(0.5, 0.8, 0.5), 18, 2.8, 0.1, 2.8, 0.02);
-                runtime.getLocation().getWorld().spawnParticle(isPremiumReward(session) ? Particle.WITCH : Particle.END_ROD, runtime.getLocation().clone().add(0.5, 1.45, 0.5), 10, 0.2, 0.25, 0.2, 0.01);
+                runtime.getLocation().getWorld().spawnParticle(isPremiumReward(session) ? Particle.DRAGON_BREATH : Particle.GLOW, runtime.getLocation().clone().add(0.5, 0.8, 0.5), scaled(18), 2.8, 0.1, 2.8, 0.02);
+                runtime.getLocation().getWorld().spawnParticle(isPremiumReward(session) ? Particle.WITCH : Particle.END_ROD, runtime.getLocation().clone().add(0.5, 1.45, 0.5), scaled(10), 0.2, 0.25, 0.2, 0.01);
             }
-        }.runTaskTimer(plugin, 10L, 4L);
+        }.runTaskTimer(plugin, performance.cadence(10L), performance.cadence(4L));
     }
 
     @Override
