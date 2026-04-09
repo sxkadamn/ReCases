@@ -1,10 +1,51 @@
 # Версия структуры конфига
 # Нужна плагину для автоматической миграции старых конфигов после обновления
-config-version: 11
+config-version: 13
 
 settings:
-  # Unique server id used in audit/webhooks when several servers share one database
+  # Уникальный id сервера для аудита и вебхуков, если несколько серверов используют одну базу
   server-id: default
+  redis:
+    # Включить Redis pub/sub для инвалидации кэша и распределённых блокировок открытий в мультисерверной сети
+    enabled: false
+    host: 127.0.0.1
+    port: 6379
+    password: ''
+    database: 0
+    timeout-millis: 2000
+    channel-prefix: recases
+    publish-keys: true
+    publish-stats: true
+    subscriber-reconnect-seconds: 5
+    lock-ttl-seconds: 180
+  bedrock:
+    # Поддержка Floodgate/Geyser для игроков с Bedrock
+    enabled: false
+    menu-mode: preview-first
+    force-simple-animations: true
+    simplify-heavy-animations: true
+    max-selections: 1
+    fallback-animation: anchor-rise
+  integrations:
+    custom-items:
+      itemsadder:
+        enabled: true
+      oraxen:
+        enabled: true
+      nexo:
+        enabled: true
+      mmoitems:
+        enabled: true
+    discord-bot:
+      # Двусторонний Discord-бот через JDA: аудит, выдача ключей и промокоды
+      enabled: false
+      token: ''
+      # Если указать guild-id, slash-команды зарегистрируются быстрее именно в этой гильдии
+      guild-id: ''
+      # Канал для логов модерации из Minecraft и Discord
+      moderation-channel-id: ''
+      # Если список пуст, доступ будет у Discord-пользователей с ADMINISTRATOR
+      allowed-role-ids: []
   schematics:
     # Общий переключатель сцен из .schem/.schematic файлов для анимаций
     enabled: false
@@ -50,7 +91,7 @@ settings:
       # Автоматически снижать нагрузку анимаций при нескольких одновременных открытиях
       adaptive-load: true
     dynamic-selection:
-      # Automatically swap heavy animations to lighter ones when player is far away or server is under load
+      # Автоматически заменять тяжёлые анимации на более лёгкие, если игрок далеко или сервер под нагрузкой
       enabled: true
       max-player-distance: 24.0
       active-openings-threshold: 4
@@ -204,7 +245,7 @@ settings:
         rare-color: 7929855
         guaranteed-color: 16766720
         default-color: 7631988
-        # Optional thumbnail URL with placeholders:
+        # Необязательный URL миниатюры с плейсхолдерами:
         # %player% %player_uuid% %case% %instance% %animation% %reward% %reward_id% %transaction% %server%
         thumbnail-url: ''
       links:
@@ -215,7 +256,7 @@ settings:
           label: Open Audit
           url: 'https://example.com/audit/%transaction%'
   opening-recovery:
-    # grant-if-possible = deliver saved pending rewards on next join, refund = always return the key
+    # grant-if-possible = выдать сохранённую награду при следующем входе, refund = всегда вернуть ключ
     mode: grant-if-possible
   updater:
     # Проверка новых версий на Spigot
@@ -248,9 +289,9 @@ settings:
 
   metrics:
     bstats:
-      # Enable bStats after registering the plugin and setting a valid plugin id.
+      # Включить bStats после регистрации плагина и указания корректного plugin-id.
       enabled: true
-      # Get the id from https://bstats.org/what-is-my-plugin-id
+      # Получить id можно на https://bstats.org/what-is-my-plugin-id
       plugin-id: 30513
 
 console:
@@ -317,8 +358,8 @@ leaderboards:
             - '#a8dadc#%position% #ffffff%player% #80ed99- %value%'
           empty-lines:
             - '#ff6b6bПока нет данных'
-      # views = список экранов одной и той же голограммы.
-      # Игрок кликает по голограмме и она переключается на следующий view по кругу
+      # views = список представлений одной и той же голограммы.
+      # Игрок кликает по голограмме, и она переключается на следующее представление по кругу
       # type: opens | rare | guaranteed
       # profile указывается только если нужен топ по конкретному профилю кейса
       # Доступные плейсхолдеры в строках:
@@ -328,7 +369,7 @@ leaderboards:
       # %scope% - текущая область (global или id профиля)
       # %next_scope% - что будет показано после следующего клика
       #
-      # PlaceholderAPI:
+      # Плейсхолдеры PlaceholderAPI:
       # %recases_hologram_top-opens-global_scope%
       # %recases_hologram_top-opens-global_type%
       # %recases_hologram_top-opens-global_view%
@@ -340,7 +381,7 @@ cases:
     # Можно создать несколько отдельных точек: main, vip, spawn и т.д.
     main:
       # Анимация именно для этой физической точки
-      # Если оставить пусто, плагин возьмет анимацию из profile
+      # Если оставить пусто, плагин возьмёт анимацию из profile
       # Доступно: classic, circle, meteor-drop, void-rift, wheel, sphere, swords, anchor-rise, rainly, neural
       animation: classic
       location:
@@ -361,10 +402,29 @@ profiles:
     # Анимация для этого профиля кейса.
     # Доступно: classic, circle, meteor-drop, void-rift, wheel, sphere, swords, anchor-rise, rainly, neural
     animation: classic
+    # Условия доступа к профилю. Все строки должны пройти проверку.
+    # Примеры:
+    # - permission;recases.profile.donate
+    # - world;world
+    # - opens-min;5
+    conditions: []
     guarantee:
-      # После скольких открытий без rare-награды сработает гарант
+      # После скольких открытий без редкой награды сработает гарант
       # 0 = гарант отключен.
       after-opens: 10
+      curve:
+        # Плавный pity: увеличивает вес редких наград до hard pity
+        enabled: true
+        # После скольких неудачных открытий начинать разгон редких наград
+        start-after: 0
+        # Максимальный множитель веса редких наград перед hard pity
+        max-rare-weight-multiplier: 3.5
+        # Форма кривой роста. Чем выше число, тем резче рост ближе к гаранту
+        exponent: 1.4
+    # Триггеры профиля. На каждое событие можно повесить список action-строк
+    # Доступные встроенные события: opening-start, opening-abort, opening-complete,
+    # reward-granted, reward-recovered, reward-rollback, reward-restore
+    triggers: {}
     menu:
       # Материал и слот предмета в меню выбора кейса
       material: DIAMOND_SWORD
@@ -381,12 +441,14 @@ profiles:
         name: '#ffd166ГИГА'
         rare: true
         chance: 20
+        # Условия самой награды. Если хоть одно не проходит, награда исключается из пула
+        conditions: []
         actions:
           # Форматы:
           # message;<text>
           # broadcast;<text>
-          # command;<console command>
-          # title;<title>;<subtitle>
+          # command;<консольная команда>
+          # title;<заголовок>;<подзаголовок>
           # lp-group-add;<group>
           # lp-group-remove;<group>
           # lp-group-add-temp;<group>;<duration>
@@ -395,11 +457,16 @@ profiles:
           # sound;<sound>;<volume>;<pitch>
           # firework;<color|#hex[,#hex]>;<type>;<power>
           # effect;<potion_effect>;<duration_ticks>;<amplifier>
-          # broadcast-hover;<text>;<hover text>
+          # broadcast-hover;<текст>;<текст при наведении>
           # random-command-group;<cmd1>|<cmd2>|<cmd3>
+          # key-give;<profile>;<amount>
+          # key-take;<profile>;<amount>
           - 'message;#ffd166Поздравляем! Вы выиграли #ffffffГИГА'
           - 'title;#ffd166Поздравляем!;#ffffffТеперь у вас ранг ГИГА'
           - 'lp-group-add;giga'
+        # Если оставить пусто, для rollback будут использованы встроенные обратимые action'ы
+        rollback-actions: []
+        triggers: {}
       sword:
         material: 'ITEM;DIAMOND_SWORD'
         name: '#74c0fcАлмазный меч'
@@ -421,3 +488,35 @@ profiles:
         actions:
           - 'message;#ffd166Поздравляем! Вы выиграли #ffd166Золотой меч'
           - 'command;give %player% golden_sword 1'
+      # Пример награды ItemsAdder. Готовый конфиг и текстура лежат в examples/custom-items/itemsadder
+      itemsadder-example:
+        material: 'ITEMSADDER;recases_items:ruby_sword'
+        name: '#ff6b6bItemsAdder Example'
+        chance: 5
+        actions:
+          - 'message;#80ed99Пример награды ItemsAdder'
+          - 'item-give;itemsadder:recases_items:ruby_sword;1'
+      # Пример награды Oraxen. Готовый конфиг и текстура лежат в examples/custom-items/oraxen
+      oraxen-example:
+        material: 'ORAXEN;recases_ruby_sword'
+        name: '#74c0fcOraxen Example'
+        chance: 5
+        actions:
+          - 'message;#80ed99Пример награды Oraxen'
+          - 'item-give;oraxen:recases_ruby_sword;1'
+      # Пример награды Nexo. Готовый конфиг и текстура лежат в examples/custom-items/nexo
+      nexo-example:
+        material: 'NEXO;recases_ruby_sword'
+        name: '#f783acNexo Example'
+        chance: 5
+        actions:
+          - 'message;#80ed99Пример награды Nexo'
+          - 'item-give;nexo:recases_ruby_sword;1'
+      # Пример награды MMOItems. Готовый конфиг и текстуры лежат в examples/custom-items/mmoitems
+      mmoitems-example:
+        material: 'MMOITEMS;SWORD;RECASES_RUBY_SWORD'
+        name: '#ff922bMMOItems Example'
+        chance: 5
+        actions:
+          - 'message;#80ed99Пример награды MMOItems'
+          - 'item-give;mmoitems:SWORD:RECASES_RUBY_SWORD;1'

@@ -1,0 +1,12 @@
+info:
+  namespace: recases_items
+
+items:
+  ruby_sword:
+    display_name: "&x&f&f&6&6&8&8Ruby Sword"
+    permission: recases_items.ruby_sword
+    resource:
+      material: DIAMOND_SWORD
+      generate: true
+      textures:
+        - item/ruby_sword.png

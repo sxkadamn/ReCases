@@ -7,11 +7,13 @@ import net.recases.stats.LeaderboardEntry;
 import net.recases.stats.LeaderboardType;
 import net.recases.stats.PlayerStatsRecord;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
@@ -90,6 +92,7 @@ public class StatsService implements AutoCloseable {
 
         if (mySqlStorage != null) {
             mySqlStorage.recordOpening(player, profileId, reward, guaranteed);
+            publishStatsChange(player);
             return;
         }
 
@@ -101,7 +104,7 @@ public class StatsService implements AutoCloseable {
             return false;
         }
 
-        return getPity(player, profile.getId()) + 1 >= profile.getGuaranteeAfterOpens();
+        return profile.getPitySettings().isHardGuaranteeReached(getPity(player, profile.getId()));
     }
 
     public synchronized int getPity(OfflinePlayer player, String profileId) {
@@ -206,8 +209,7 @@ public class StatsService implements AutoCloseable {
             return 0;
         }
 
-        int pity = getPity(player, profile.getId());
-        return Math.min(100, (int) Math.round((pity * 100.0D) / profile.getGuaranteeAfterOpens()));
+        return profile.getPitySettings().getProgressPercent(getPity(player, profile.getId()));
     }
 
     public synchronized List<LeaderboardEntry> getLeaderboard(LeaderboardType type, String profileId, int limit) {
@@ -243,6 +245,69 @@ public class StatsService implements AutoCloseable {
         return mySqlStorage != null;
     }
 
+    public synchronized void rebuildPlayerFromAudit(UUID playerId, String playerName, List<RewardAuditService.AuditEntry> entries) {
+        if (playerId == null) {
+            return;
+        }
+
+        if (entries == null || entries.isEmpty()) {
+            records.remove(playerId);
+            invalidateCaches();
+            persistRebuiltStats(playerId, null);
+            return;
+        }
+
+        PlayerStatsRecord rebuilt = new PlayerStatsRecord(playerId);
+        rebuilt.setPlayerName(playerName == null || playerName.trim().isEmpty() ? playerId.toString() : playerName);
+        rebuilt.setDailyDate(currentStatsDate());
+        String today = currentStatsDate();
+
+        List<RewardAuditService.AuditEntry> sortedEntries = entries.stream()
+                .sorted(Comparator.comparingLong(RewardAuditService.AuditEntry::getCreatedAt))
+                .toList();
+        for (RewardAuditService.AuditEntry entry : sortedEntries) {
+            String currentName = entry.getPlayerName().isEmpty() ? rebuilt.getPlayerName() : entry.getPlayerName();
+            rebuilt.setPlayerName(currentName);
+            rebuilt.setTotalOpens(rebuilt.getTotalOpens() + 1);
+            if (today.equals(toStatsDate(entry.getCreatedAt()))) {
+                rebuilt.setTotalOpensToday(rebuilt.getTotalOpensToday() + 1);
+            }
+            rebuilt.setLastRewardName(entry.getRewardName());
+            rebuilt.setLastRewardProfile(entry.getCaseProfile());
+
+            PlayerStatsRecord.ProfileStatsRecord profileRecord = rebuilt.getOrCreateProfile(entry.getCaseProfile());
+            profileRecord.setOpens(profileRecord.getOpens() + 1);
+            if (today.equals(toStatsDate(entry.getCreatedAt()))) {
+                profileRecord.setOpensToday(profileRecord.getOpensToday() + 1);
+            }
+            profileRecord.setLastRewardName(entry.getRewardName());
+            if (entry.isRareReward()) {
+                rebuilt.setTotalRareWins(rebuilt.getTotalRareWins() + 1);
+                profileRecord.setRareWins(profileRecord.getRareWins() + 1);
+                profileRecord.setPity(0);
+            } else {
+                profileRecord.setPity(profileRecord.getPity() + 1);
+            }
+            if (entry.isGuaranteedReward()) {
+                rebuilt.setTotalGuaranteedWins(rebuilt.getTotalGuaranteedWins() + 1);
+                profileRecord.setGuaranteedWins(profileRecord.getGuaranteedWins() + 1);
+            }
+        }
+
+        records.put(playerId, rebuilt);
+        invalidateCaches();
+        persistRebuiltStats(playerId, rebuilt);
+    }
+
+    public synchronized void invalidatePlayer(UUID playerId) {
+        if (playerId == null) {
+            return;
+        }
+
+        records.remove(playerId);
+        invalidateCaches();
+    }
+
     @Override
     public void close() {
         if (mySqlStorage == null) {
@@ -261,8 +326,10 @@ public class StatsService implements AutoCloseable {
     }
 
     private void configureBackend() {
-        if (!plugin.getConfig().getBoolean("settings.network-sync.enabled", false)
-                || !"mysql".equalsIgnoreCase(plugin.getConfig().getString("settings.storage.type", "sqlite"))) {
+        boolean sharedStorage = "mysql".equalsIgnoreCase(plugin.getConfig().getString("settings.storage.type", "sqlite"))
+                && (plugin.getConfig().getBoolean("settings.network-sync.enabled", false)
+                || plugin.getConfig().getBoolean("settings.redis.enabled", false));
+        if (!sharedStorage) {
             mySqlStorage = null;
             return;
         }
@@ -454,6 +521,20 @@ public class StatsService implements AutoCloseable {
         leaderboardCache.clear();
     }
 
+    private void publishStatsChange(Player player) {
+        if (player == null || plugin.getRedisSync() == null) {
+            return;
+        }
+        plugin.getRedisSync().publishStatsSync(player.getUniqueId());
+    }
+
+    private void publishStatsChange(UUID playerId) {
+        if (playerId == null || plugin.getRedisSync() == null) {
+            return;
+        }
+        plugin.getRedisSync().publishStatsSync(playerId);
+    }
+
     private String buildLeaderboardCacheKey(LeaderboardType type, String profileId) {
         return type.getId() + ":" + (profileId == null ? "" : profileId.trim().toLowerCase(Locale.ROOT));
     }
@@ -473,5 +554,22 @@ public class StatsService implements AutoCloseable {
 
     private String currentStatsDate() {
         return LocalDate.now(statsZone).toString();
+    }
+
+    private String toStatsDate(long timestamp) {
+        return LocalDate.ofInstant(Instant.ofEpochMilli(timestamp), statsZone).toString();
+    }
+
+    private void persistRebuiltStats(UUID playerId, PlayerStatsRecord record) {
+        if (mySqlStorage != null) {
+            if (record == null) {
+                mySqlStorage.deletePlayer(playerId);
+            } else {
+                mySqlStorage.replacePlayerRecord(record);
+            }
+            publishStatsChange(playerId);
+            return;
+        }
+        saveAsync();
     }
 }

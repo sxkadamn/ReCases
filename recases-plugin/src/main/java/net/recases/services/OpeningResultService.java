@@ -1,6 +1,7 @@
 package net.recases.services;
 
 import net.recases.app.PluginContext;
+import net.recases.domain.CaseProfile;
 import net.recases.management.CaseItem;
 import net.recases.management.OpeningSession;
 import net.recases.runtime.CaseRuntime;
@@ -35,11 +36,26 @@ public class OpeningResultService {
 
         plugin.getRewardAudit().markRewardGranted(session);
         session.markRewardGranted();
-        plugin.getRewardService().execute(player, reward);
+        CaseProfile profile = plugin.getCaseService().getProfile(session.getSelectedCase());
+        CaseExecutionContext context = plugin.getRewardService().createContext(
+                player,
+                session.getSelectedCase(),
+                runtime.getId(),
+                session.getAnimationId(),
+                reward,
+                session.isGuaranteedReward(),
+                session.getPityBeforeOpen(),
+                "reward-granted",
+                false,
+                false
+        );
+        plugin.getRewardService().execute(context, reward.getActions());
         plugin.getStats().recordOpening(player, session.getSelectedCase(), reward, session.isGuaranteedReward());
         plugin.getLeaderboardHolograms().requestRefresh();
         plugin.getMessages().send(player, "messages.case-reward-received", "#80ed99You received a reward: #ffffff%reward%", "%reward%", reward.getName());
         plugin.getDiscordWebhooks().notifyReward(player, runtime, session, reward);
+        plugin.getTriggerService().fireConfigured("reward-granted", context, profile, reward);
+        plugin.getTriggerService().fireConfigured("opening-complete", context.withTrigger("opening-complete"), profile, reward);
         plugin.getRewardAudit().discardPending(session);
         plugin.getCaseService().completeOpening(runtime);
         return true;

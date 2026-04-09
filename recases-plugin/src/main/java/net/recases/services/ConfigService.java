@@ -18,7 +18,7 @@ import java.util.Set;
 
 public class ConfigService {
 
-    private static final int CURRENT_VERSION = 11;
+    private static final int CURRENT_VERSION = 13;
     private static final Set<String> KNOWN_ANIMATIONS = Set.of(
             "classic",
             "circle",
@@ -33,6 +33,7 @@ public class ConfigService {
     );
     private static final Set<String> KNOWN_PERFORMANCE_PROFILES = Set.of("pretty", "balanced", "lite");
     private static final Set<String> KNOWN_RECOVERY_MODES = Set.of("grant-if-possible", "refund");
+    private static final Set<String> KNOWN_BEDROCK_MENU_MODES = Set.of("preview-first", "inventory");
 
     private final JavaPlugin plugin;
 
@@ -118,6 +119,44 @@ public class ConfigService {
             plugin.getConfig().set("settings.network-sync.sync-stats", true);
         }
 
+        if (plugin.getConfig().getConfigurationSection("settings.redis") == null) {
+            plugin.getConfig().set("settings.redis.enabled", false);
+            plugin.getConfig().set("settings.redis.host", "127.0.0.1");
+            plugin.getConfig().set("settings.redis.port", 6379);
+            plugin.getConfig().set("settings.redis.password", "");
+            plugin.getConfig().set("settings.redis.database", 0);
+            plugin.getConfig().set("settings.redis.timeout-millis", 2000);
+            plugin.getConfig().set("settings.redis.channel-prefix", "recases");
+            plugin.getConfig().set("settings.redis.publish-keys", true);
+            plugin.getConfig().set("settings.redis.publish-stats", true);
+            plugin.getConfig().set("settings.redis.subscriber-reconnect-seconds", 5);
+            plugin.getConfig().set("settings.redis.lock-ttl-seconds", 180);
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.bedrock") == null) {
+            plugin.getConfig().set("settings.bedrock.enabled", false);
+            plugin.getConfig().set("settings.bedrock.menu-mode", "preview-first");
+            plugin.getConfig().set("settings.bedrock.force-simple-animations", true);
+            plugin.getConfig().set("settings.bedrock.simplify-heavy-animations", true);
+            plugin.getConfig().set("settings.bedrock.max-selections", 1);
+            plugin.getConfig().set("settings.bedrock.fallback-animation", "anchor-rise");
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.integrations.custom-items") == null) {
+            plugin.getConfig().set("settings.integrations.custom-items.itemsadder.enabled", true);
+            plugin.getConfig().set("settings.integrations.custom-items.oraxen.enabled", true);
+            plugin.getConfig().set("settings.integrations.custom-items.nexo.enabled", true);
+            plugin.getConfig().set("settings.integrations.custom-items.mmoitems.enabled", true);
+        }
+
+        if (plugin.getConfig().getConfigurationSection("settings.integrations.discord-bot") == null) {
+            plugin.getConfig().set("settings.integrations.discord-bot.enabled", false);
+            plugin.getConfig().set("settings.integrations.discord-bot.token", "");
+            plugin.getConfig().set("settings.integrations.discord-bot.guild-id", "");
+            plugin.getConfig().set("settings.integrations.discord-bot.moderation-channel-id", "");
+            plugin.getConfig().set("settings.integrations.discord-bot.allowed-role-ids", List.of());
+        }
+
         if (plugin.getConfig().getConfigurationSection("settings.metrics.bstats") == null) {
             plugin.getConfig().set("settings.metrics.bstats.enabled", false);
             plugin.getConfig().set("settings.metrics.bstats.plugin-id", 0);
@@ -158,6 +197,7 @@ public class ConfigService {
         }
 
         migrateRewardActions();
+        migratePityCurves();
         plugin.getConfig().set("config-version", CURRENT_VERSION);
         ((net.recases.app.PluginContext) plugin).saveConfigUtf8();
     }
@@ -196,7 +236,7 @@ public class ConfigService {
         } else {
             for (String profileId : profiles.getKeys(false)) {
                 String materialName = plugin.getConfig().getString("profiles." + profileId + ".menu.material", "CHEST");
-                if (Material.matchMaterial(materialName) == null) {
+                if (!isValidMaterialDefinition(materialName, true)) {
                     warnings.add("Profile '" + profileId + "' has invalid menu material '" + materialName + "'.");
                 }
                 String profileAnimation = plugin.getConfig().getString("profiles." + profileId + ".animation", "classic");
@@ -225,11 +265,8 @@ public class ConfigService {
                     String materialDefinition = plugin.getConfig().getString("profiles." + profileId + ".rewards." + rewardId + ".material", "");
                     if (materialDefinition.trim().isEmpty()) {
                         warnings.add("Reward '" + rewardId + "' in profile '" + profileId + "' has empty material.");
-                    } else if (materialDefinition.toLowerCase().startsWith("item;")) {
-                        String material = materialDefinition.substring(5);
-                        if (Material.matchMaterial(material) == null) {
-                            warnings.add("Reward '" + rewardId + "' in profile '" + profileId + "' has invalid material '" + material + "'.");
-                        }
+                    } else if (!isValidMaterialDefinition(materialDefinition, true)) {
+                        warnings.add("Reward '" + rewardId + "' in profile '" + profileId + "' has invalid material '" + materialDefinition + "'.");
                     }
 
                     int chance = plugin.getConfig().getInt("profiles." + profileId + ".rewards." + rewardId + ".chance", 0);
@@ -301,9 +338,41 @@ public class ConfigService {
             }
         }
 
+        if (plugin.getConfig().getBoolean("settings.redis.enabled", false)) {
+            if (!"mysql".equalsIgnoreCase(plugin.getConfig().getString("settings.storage.type", "sqlite"))) {
+                warnings.add("Redis sync is enabled but storage.type is not mysql.");
+            }
+            if (plugin.getConfig().getString("settings.redis.host", "").trim().isEmpty()) {
+                warnings.add("settings.redis.host cannot be empty.");
+            }
+            if (plugin.getConfig().getInt("settings.redis.port", 6379) <= 0) {
+                warnings.add("settings.redis.port must be greater than 0.");
+            }
+            if (plugin.getConfig().getInt("settings.redis.lock-ttl-seconds", 180) < 30) {
+                warnings.add("settings.redis.lock-ttl-seconds must be at least 30.");
+            }
+        }
+
+        String bedrockMenuMode = plugin.getConfig().getString("settings.bedrock.menu-mode", "preview-first").trim().toLowerCase();
+        if (!KNOWN_BEDROCK_MENU_MODES.contains(bedrockMenuMode)) {
+            warnings.add("settings.bedrock.menu-mode must be one of: preview-first, inventory.");
+        }
+        if (plugin.getConfig().getInt("settings.bedrock.max-selections", 1) < 0) {
+            warnings.add("settings.bedrock.max-selections cannot be negative.");
+        }
+        String bedrockFallback = plugin.getConfig().getString("settings.bedrock.fallback-animation", "anchor-rise");
+        if (!isKnownAnimation(bedrockFallback)) {
+            warnings.add("settings.bedrock.fallback-animation must reference a known animation.");
+        }
+
         if (plugin.getConfig().getBoolean("settings.metrics.bstats.enabled", false)
                 && plugin.getConfig().getInt("settings.metrics.bstats.plugin-id", 0) <= 0) {
             warnings.add("bStats is enabled but settings.metrics.bstats.plugin-id is not set.");
+        }
+
+        if (plugin.getConfig().getBoolean("settings.integrations.discord-bot.enabled", false)
+                && plugin.getConfig().getString("settings.integrations.discord-bot.token", "").trim().isEmpty()) {
+            warnings.add("Discord bot is enabled but settings.integrations.discord-bot.token is empty.");
         }
 
         if (plugin.getConfig().getString("settings.presets.folder", "presets").trim().isEmpty()) {
@@ -354,9 +423,75 @@ public class ConfigService {
         }
     }
 
+    private void migratePityCurves() {
+        ConfigurationSection profiles = plugin.getConfig().getConfigurationSection("profiles");
+        if (profiles == null) {
+            return;
+        }
+
+        for (String profileId : profiles.getKeys(false)) {
+            String basePath = "profiles." + profileId + ".guarantee.curve";
+            if (!plugin.getConfig().contains(basePath + ".enabled")) {
+                plugin.getConfig().set(basePath + ".enabled", true);
+            }
+            if (!plugin.getConfig().contains(basePath + ".start-after")) {
+                plugin.getConfig().set(basePath + ".start-after", 0);
+            }
+            if (!plugin.getConfig().contains(basePath + ".max-rare-weight-multiplier")) {
+                plugin.getConfig().set(basePath + ".max-rare-weight-multiplier", 3.5D);
+            }
+            if (!plugin.getConfig().contains(basePath + ".exponent")) {
+                plugin.getConfig().set(basePath + ".exponent", 1.4D);
+            }
+            if (!plugin.getConfig().contains("profiles." + profileId + ".conditions")) {
+                plugin.getConfig().set("profiles." + profileId + ".conditions", List.of());
+            }
+            if (!plugin.getConfig().contains("profiles." + profileId + ".triggers")) {
+                plugin.getConfig().set("profiles." + profileId + ".triggers", null);
+            }
+
+            ConfigurationSection rewards = plugin.getConfig().getConfigurationSection("profiles." + profileId + ".rewards");
+            if (rewards == null) {
+                continue;
+            }
+            for (String rewardId : rewards.getKeys(false)) {
+                String rewardPath = "profiles." + profileId + ".rewards." + rewardId;
+                if (!plugin.getConfig().contains(rewardPath + ".conditions")) {
+                    plugin.getConfig().set(rewardPath + ".conditions", List.of());
+                }
+                if (!plugin.getConfig().contains(rewardPath + ".rollback-actions")) {
+                    plugin.getConfig().set(rewardPath + ".rollback-actions", List.of());
+                }
+            }
+        }
+    }
+
     private boolean isKnownAnimation(String animationId) {
         String value = animationId == null ? "" : animationId.trim().toLowerCase();
         return value.isEmpty() || KNOWN_ANIMATIONS.contains(value);
+    }
+
+    private boolean isValidMaterialDefinition(String definition, boolean allowHeads) {
+        if (definition == null || definition.trim().isEmpty()) {
+            return false;
+        }
+
+        String normalized = definition.trim();
+        if (!normalized.contains(";")) {
+            return Material.matchMaterial(normalized) != null;
+        }
+
+        String prefix = normalized.substring(0, normalized.indexOf(';')).trim().toLowerCase();
+        if ("item".equals(prefix)) {
+            return Material.matchMaterial(normalized.substring(normalized.indexOf(';') + 1).trim()) != null;
+        }
+        if ("head".equals(prefix)) {
+            return allowHeads;
+        }
+        return "itemsadder".equals(prefix)
+                || "oraxen".equals(prefix)
+                || "nexo".equals(prefix)
+                || "mmoitems".equals(prefix);
     }
 
     private void validateAnimationSettings(List<String> warnings) {

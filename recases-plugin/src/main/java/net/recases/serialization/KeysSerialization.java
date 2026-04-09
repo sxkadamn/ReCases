@@ -1,6 +1,7 @@
 package net.recases.serialization;
 
 import net.recases.runtime.cache.KeyCache;
+import net.recases.services.RedisSyncService;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -16,20 +17,23 @@ public class KeysSerialization implements AutoCloseable {
     private final org.bukkit.plugin.java.JavaPlugin plugin;
     private final KeyCache cache;
     private final KeyStorage storage;
+    private final RedisSyncService redisSyncService;
     private final File legacyYamlFile;
-    private final boolean networkSyncEnabled;
+    private final boolean sharedStorageEnabled;
     private final ExecutorService writer = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "recases-keys-writer");
         thread.setDaemon(true);
         return thread;
     });
 
-    public KeysSerialization(org.bukkit.plugin.java.JavaPlugin plugin, KeyCache cache) {
+    public KeysSerialization(org.bukkit.plugin.java.JavaPlugin plugin, KeyCache cache, RedisSyncService redisSyncService) {
         this.plugin = plugin;
         this.cache = cache;
+        this.redisSyncService = redisSyncService;
         this.legacyYamlFile = new File(plugin.getDataFolder(), "keys.yml");
-        this.networkSyncEnabled = plugin.getConfig().getBoolean("settings.network-sync.enabled", false)
-                && "mysql".equalsIgnoreCase(plugin.getConfig().getString("settings.storage.type", "sqlite"));
+        this.sharedStorageEnabled = "mysql".equalsIgnoreCase(plugin.getConfig().getString("settings.storage.type", "sqlite"))
+                && (plugin.getConfig().getBoolean("settings.network-sync.enabled", false)
+                || plugin.getConfig().getBoolean("settings.redis.enabled", false));
         this.storage = createStorage(plugin.getConfig());
         this.storage.initialize();
         migrateLegacyYamlIfNeeded(plugin.getConfig());
@@ -40,7 +44,10 @@ public class KeysSerialization implements AutoCloseable {
         String normalizedCaseName = normalizeCaseName(caseName);
         int normalized = Math.max(0, amount);
         cache.putKeyAmount(playerKey.getUniqueId(), normalizedCaseName, normalized);
-        submitWrite(() -> storage.setCaseAmount(playerKey, normalizedCaseName, normalized));
+        submitWrite(() -> {
+            storage.setCaseAmount(playerKey, normalizedCaseName, normalized);
+            publishKeyUpdate(playerKey, normalizedCaseName);
+        });
     }
 
     public void addCase(OfflinePlayer player, String caseName, int amount) {
@@ -53,7 +60,7 @@ public class KeysSerialization implements AutoCloseable {
     public int getCaseAmount(OfflinePlayer player, String caseName) {
         PlayerKey playerKey = PlayerKey.from(player);
         String normalizedCaseName = normalizeCaseName(caseName);
-        if (networkSyncEnabled) {
+        if (sharedStorageEnabled && !isRedisCacheEnabled()) {
             int amount = storage.getCaseAmount(playerKey, normalizedCaseName);
             cache.putKeyAmount(playerKey.getUniqueId(), normalizedCaseName, amount);
             return amount;
@@ -96,6 +103,7 @@ public class KeysSerialization implements AutoCloseable {
         submitWrite(() -> {
             int remote = storage.changeCaseAmount(playerKey, normalizedCaseName, delta);
             cache.putKeyAmount(playerKey.getUniqueId(), normalizedCaseName, remote);
+            publishKeyUpdate(playerKey, normalizedCaseName);
         });
     }
 
@@ -184,6 +192,17 @@ public class KeysSerialization implements AutoCloseable {
 
     private String normalizeCaseName(String caseName) {
         return caseName == null ? "" : caseName.toLowerCase();
+    }
+
+    private boolean isRedisCacheEnabled() {
+        return redisSyncService != null && redisSyncService.supportsSharedData();
+    }
+
+    private void publishKeyUpdate(PlayerKey playerKey, String caseName) {
+        if (redisSyncService == null) {
+            return;
+        }
+        redisSyncService.publishKeySync(playerKey.getUniqueId(), caseName);
     }
 }
 

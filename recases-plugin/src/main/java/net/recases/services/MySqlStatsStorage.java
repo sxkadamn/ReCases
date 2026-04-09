@@ -236,6 +236,74 @@ final class MySqlStatsStorage {
         }
     }
 
+    void replacePlayerRecord(PlayerStatsRecord record) {
+        if (record == null) {
+            return;
+        }
+
+        try (Connection connection = openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                deletePlayerInternal(connection, record.getPlayerId());
+                if (record.getTotalOpens() > 0 || !record.getProfileStats().isEmpty()) {
+                    try (PreparedStatement playerInsert = connection.prepareStatement(
+                            "INSERT INTO recases_player_stats (player_id, player_name, total_opens, opens_today, total_rare_wins, total_guaranteed_wins, daily_date, last_reward_name, last_reward_profile) " +
+                                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                        playerInsert.setString(1, record.getPlayerId().toString());
+                        playerInsert.setString(2, record.getPlayerName());
+                        playerInsert.setInt(3, record.getTotalOpens());
+                        playerInsert.setInt(4, record.getTotalOpensToday());
+                        playerInsert.setInt(5, record.getTotalRareWins());
+                        playerInsert.setInt(6, record.getTotalGuaranteedWins());
+                        playerInsert.setString(7, record.getDailyDate());
+                        playerInsert.setString(8, record.getLastRewardName());
+                        playerInsert.setString(9, record.getLastRewardProfile());
+                        playerInsert.executeUpdate();
+                    }
+
+                    try (PreparedStatement profileInsert = connection.prepareStatement(
+                            "INSERT INTO recases_profile_stats (player_id, profile_id, opens, opens_today, daily_date, rare_wins, guaranteed_wins, pity, last_reward_name) " +
+                                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                        for (Map.Entry<String, PlayerStatsRecord.ProfileStatsRecord> entry : record.getProfileStats().entrySet()) {
+                            PlayerStatsRecord.ProfileStatsRecord profile = entry.getValue();
+                            profileInsert.setString(1, record.getPlayerId().toString());
+                            profileInsert.setString(2, entry.getKey());
+                            profileInsert.setInt(3, profile.getOpens());
+                            profileInsert.setInt(4, profile.getOpensToday());
+                            profileInsert.setString(5, record.getDailyDate());
+                            profileInsert.setInt(6, profile.getRareWins());
+                            profileInsert.setInt(7, profile.getGuaranteedWins());
+                            profileInsert.setInt(8, profile.getPity());
+                            profileInsert.setString(9, profile.getLastRewardName());
+                            profileInsert.addBatch();
+                        }
+                        profileInsert.executeBatch();
+                    }
+                }
+                connection.commit();
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            throw new RuntimeException("Failed to replace player stats in MySQL", exception);
+        }
+    }
+
+    void deletePlayer(UUID playerId) {
+        if (playerId == null) {
+            return;
+        }
+
+        try (Connection connection = openConnection()) {
+            deletePlayerInternal(connection, playerId);
+        } catch (SQLException exception) {
+            throw new RuntimeException("Failed to delete player stats from MySQL", exception);
+        }
+    }
+
     private void ensureColumn(Connection connection, String sql) throws SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.executeUpdate(sql);
@@ -260,6 +328,17 @@ final class MySqlStatsStorage {
                 username,
                 password
         );
+    }
+
+    private void deletePlayerInternal(Connection connection, UUID playerId) throws SQLException {
+        try (PreparedStatement deleteProfiles = connection.prepareStatement("DELETE FROM recases_profile_stats WHERE player_id = ?")) {
+            deleteProfiles.setString(1, playerId.toString());
+            deleteProfiles.executeUpdate();
+        }
+        try (PreparedStatement deletePlayer = connection.prepareStatement("DELETE FROM recases_player_stats WHERE player_id = ?")) {
+            deletePlayer.setString(1, playerId.toString());
+            deletePlayer.executeUpdate();
+        }
     }
 
     private UUID parseUuid(String raw) {

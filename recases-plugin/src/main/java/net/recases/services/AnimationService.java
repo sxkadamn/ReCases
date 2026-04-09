@@ -87,7 +87,9 @@ public class AnimationService implements OpeningAnimationRegistry {
     }
 
     public String resolveAnimationId(Player player, CaseRuntime runtime, CaseProfile profile) {
-        return applyAdaptiveFallback(player, runtime, resolveAnimationId(runtime, profile));
+        String animationId = applyAdaptiveFallback(player, runtime, resolveAnimationId(runtime, profile));
+        PluginContext context = plugin instanceof PluginContext ? (PluginContext) plugin : null;
+        return context == null ? animationId : context.getBedrockSupport().adaptAnimationId(player, animationId);
     }
 
     public OpeningAnimation create(PluginContext context, Player player, CaseRuntime runtime, CaseProfile profile) {

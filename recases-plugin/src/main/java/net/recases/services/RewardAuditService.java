@@ -1,6 +1,7 @@
 package net.recases.services;
 
 import net.recases.app.PluginContext;
+import net.recases.domain.CaseProfile;
 import net.recases.management.CaseItem;
 import net.recases.management.OpeningSession;
 import net.recases.runtime.CaseRuntime;
@@ -16,6 +17,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -48,6 +50,11 @@ public class RewardAuditService implements AutoCloseable {
             ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN pity_before INT NOT NULL DEFAULT 0");
             ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN pity_after INT NOT NULL DEFAULT 0");
             ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN server_id VARCHAR(64) NOT NULL DEFAULT ''");
+            ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN rolled_back BOOLEAN NOT NULL DEFAULT FALSE");
+            ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN restored BOOLEAN NOT NULL DEFAULT FALSE");
+            ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN rollback_actor VARCHAR(96) NOT NULL DEFAULT ''");
+            ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN restore_actor VARCHAR(96) NOT NULL DEFAULT ''");
+            ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN updated_at BIGINT NOT NULL DEFAULT 0");
 
             ensureColumn(connection, "recases_pending_openings", "ALTER TABLE recases_pending_openings ADD COLUMN transaction_id VARCHAR(36) NOT NULL DEFAULT ''");
             ensureColumn(connection, "recases_pending_openings", "ALTER TABLE recases_pending_openings ADD COLUMN reward_id VARCHAR(96) NOT NULL DEFAULT ''");
@@ -101,26 +108,12 @@ public class RewardAuditService implements AutoCloseable {
         }
 
         String sql = isMysql()
-                ? "INSERT IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                : "INSERT OR IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                ? "INSERT IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                : "INSERT OR IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, session.getOpeningId().toString());
-            statement.setString(2, session.getTransactionId().toString());
-            statement.setString(3, player.getUniqueId().toString());
-            statement.setString(4, player.getName());
-            statement.setString(5, session.getSelectedCase());
-            statement.setString(6, runtime.getId());
-            statement.setString(7, session.getAnimationId());
-            statement.setString(8, reward.getId());
-            statement.setString(9, reward.getName());
-            statement.setBoolean(10, reward.isRare());
-            statement.setBoolean(11, session.isGuaranteedReward());
-            statement.setInt(12, session.getPityBeforeOpen());
-            statement.setInt(13, reward.isRare() ? 0 : session.getPityBeforeOpen() + 1);
-            statement.setString(14, resolveServerId());
-            statement.setLong(15, System.currentTimeMillis());
+            bindAuditStatement(statement, player, runtime.getId(), session.getAnimationId(), session.getSelectedCase(), session, reward, resolveServerId(), false, false, "", "", System.currentTimeMillis());
             return statement.executeUpdate() > 0;
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to write reward audit record", exception);
@@ -129,7 +122,7 @@ public class RewardAuditService implements AutoCloseable {
 
     public List<AuditEntry> getRecentEntries(UUID playerId, int limit) {
         int normalizedLimit = Math.max(1, Math.min(limit, 50));
-        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, created_at " +
+        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at " +
                 "FROM recases_reward_audit "
                 + (playerId == null ? "" : "WHERE player_id = ? ")
                 + "ORDER BY created_at DESC LIMIT ?";
@@ -144,29 +137,103 @@ public class RewardAuditService implements AutoCloseable {
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<AuditEntry> entries = new ArrayList<>();
                 while (resultSet.next()) {
-                    entries.add(new AuditEntry(
-                            parseUuid(resultSet.getString("opening_id")),
-                            parseUuid(resultSet.getString("transaction_id")),
-                            parseUuid(resultSet.getString("player_id")),
-                            resultSet.getString("player_name"),
-                            resultSet.getString("case_profile"),
-                            resultSet.getString("runtime_id"),
-                            resultSet.getString("animation_id"),
-                            resultSet.getString("reward_id"),
-                            resultSet.getString("reward_name"),
-                            resultSet.getBoolean("rare_reward"),
-                            resultSet.getBoolean("guaranteed_reward"),
-                            Math.max(0, resultSet.getInt("pity_before")),
-                            Math.max(0, resultSet.getInt("pity_after")),
-                            resultSet.getString("server_id"),
-                            resultSet.getLong("created_at")
-                    ));
+                    entries.add(mapAuditEntry(resultSet));
                 }
                 return entries;
             }
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to load reward audit records", exception);
         }
+    }
+
+    public MutationResult rollbackEntry(String identifier, String actorName) {
+        LookupResult lookup = resolveEntry(identifier);
+        if (lookup.ambiguous) {
+            return MutationResult.failed("Идентификатор неоднозначен. Укажите более длинный tx/opening id.");
+        }
+        if (lookup.entry == null) {
+            return MutationResult.failed("Запись не найдена.");
+        }
+
+        AuditEntry entry = lookup.entry;
+        if (entry.isRolledBack()) {
+            return MutationResult.failed("Эта выдача уже откатана.");
+        }
+
+        Player player = Bukkit.getPlayer(entry.getPlayerId());
+        if (player == null || !player.isOnline()) {
+            return MutationResult.failed("Для rollback игрок должен быть онлайн.");
+        }
+
+        CaseItem reward = plugin.getCaseService().getReward(entry.getCaseProfile(), entry.getRewardId());
+        if (reward == null) {
+            return MutationResult.failed("Награда для этой записи больше не существует.");
+        }
+
+        CaseProfile profile = plugin.getCaseService().getProfile(entry.getCaseProfile());
+        CaseExecutionContext context = plugin.getRewardService().createContext(
+                player,
+                entry.getCaseProfile(),
+                entry.getRuntimeId(),
+                entry.getAnimationId(),
+                reward,
+                entry.isGuaranteedReward(),
+                entry.getPityBefore(),
+                "reward-rollback",
+                false,
+                true
+        );
+        plugin.getRewardService().rollback(context, reward);
+        updateAuditState(entry.getOpeningId(), true, false, actorName, entry.getRestoreActor());
+        rebuildPlayerStats(entry);
+        plugin.getLeaderboardHolograms().requestRefresh();
+        plugin.getTriggerService().fireConfigured("reward-rollback", context, profile, reward);
+        return MutationResult.success("Rollback выполнен.", entry);
+    }
+
+    public MutationResult restoreEntry(String identifier, String actorName) {
+        LookupResult lookup = resolveEntry(identifier);
+        if (lookup.ambiguous) {
+            return MutationResult.failed("Идентификатор неоднозначен. Укажите более длинный tx/opening id.");
+        }
+        if (lookup.entry == null) {
+            return MutationResult.failed("Запись не найдена.");
+        }
+
+        AuditEntry entry = lookup.entry;
+        if (!entry.isRolledBack()) {
+            return MutationResult.failed("Эта выдача не откатана.");
+        }
+
+        Player player = Bukkit.getPlayer(entry.getPlayerId());
+        if (player == null || !player.isOnline()) {
+            return MutationResult.failed("Для restore игрок должен быть онлайн.");
+        }
+
+        CaseItem reward = plugin.getCaseService().getReward(entry.getCaseProfile(), entry.getRewardId());
+        if (reward == null) {
+            return MutationResult.failed("Награда для этой записи больше не существует.");
+        }
+
+        CaseProfile profile = plugin.getCaseService().getProfile(entry.getCaseProfile());
+        CaseExecutionContext context = plugin.getRewardService().createContext(
+                player,
+                entry.getCaseProfile(),
+                entry.getRuntimeId(),
+                entry.getAnimationId(),
+                reward,
+                entry.isGuaranteedReward(),
+                entry.getPityBefore(),
+                "reward-restore",
+                false,
+                false
+        );
+        plugin.getRewardService().execute(context, reward.getActions());
+        updateAuditState(entry.getOpeningId(), false, true, entry.getRollbackActor(), actorName);
+        rebuildPlayerStats(entry);
+        plugin.getLeaderboardHolograms().requestRefresh();
+        plugin.getTriggerService().fireConfigured("reward-restore", context, profile, reward);
+        return MutationResult.success("Restore выполнен.", entry);
     }
 
     public void recoverPendingOpenings() {
@@ -232,36 +299,53 @@ public class RewardAuditService implements AutoCloseable {
             return;
         }
 
-        plugin.getRewardService().execute(player, reward);
+        CaseProfile profile = plugin.getCaseService().getProfile(opening.getCaseProfile());
+        CaseExecutionContext context = plugin.getRewardService().createContext(
+                player,
+                opening.getCaseProfile(),
+                opening.getRuntimeId(),
+                opening.getAnimationId(),
+                reward,
+                opening.isGuaranteedReward(),
+                opening.getPityBefore(),
+                "reward-recovered",
+                true,
+                false
+        );
+        plugin.getRewardService().execute(context, reward.getActions());
         plugin.getStats().recordOpening(player, opening.getCaseProfile(), reward, opening.isGuaranteedReward());
         plugin.getLeaderboardHolograms().requestRefresh();
         plugin.getMessages().send(player, "messages.case-recovery-granted", "#80ed99Recovered reward: #ffffff%reward%", "%reward%", reward.getName());
         plugin.getDiscordWebhooks().notifyRecoveredReward(player, opening, reward);
+        plugin.getTriggerService().fireConfigured("reward-recovered", context, profile, reward);
         deletePending(opening.getOpeningId());
     }
 
     private boolean recordRecoveredIfAbsent(Player player, PendingOpening opening, CaseItem reward) {
         String sql = isMysql()
-                ? "INSERT IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                : "INSERT OR IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                ? "INSERT IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                : "INSERT OR IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, opening.getOpeningId().toString());
-            statement.setString(2, opening.getTransactionId().toString());
-            statement.setString(3, player.getUniqueId().toString());
-            statement.setString(4, player.getName());
-            statement.setString(5, opening.getCaseProfile());
-            statement.setString(6, opening.getRuntimeId());
-            statement.setString(7, opening.getAnimationId());
-            statement.setString(8, reward.getId());
-            statement.setString(9, reward.getName());
-            statement.setBoolean(10, reward.isRare());
-            statement.setBoolean(11, opening.isGuaranteedReward());
-            statement.setInt(12, opening.getPityBefore());
-            statement.setInt(13, reward.isRare() ? 0 : opening.getPityBefore() + 1);
-            statement.setString(14, opening.getServerId());
-            statement.setLong(15, System.currentTimeMillis());
+            bindAuditStatement(
+                    statement,
+                    player,
+                    opening.getRuntimeId(),
+                    opening.getAnimationId(),
+                    opening.getCaseProfile(),
+                    opening.getTransactionId(),
+                    opening.getOpeningId(),
+                    reward,
+                    opening.isGuaranteedReward(),
+                    opening.getPityBefore(),
+                    opening.getServerId(),
+                    false,
+                    false,
+                    "",
+                    "",
+                    System.currentTimeMillis()
+            );
             return statement.executeUpdate() > 0;
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to recover pending reward delivery", exception);
@@ -350,6 +434,79 @@ public class RewardAuditService implements AutoCloseable {
         plugin.getStorage().addCase(player, opening.getCaseProfile(), 1);
     }
 
+    private LookupResult resolveEntry(String identifier) {
+        String normalized = identifier == null ? "" : identifier.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isEmpty()) {
+            return new LookupResult(null, false);
+        }
+
+        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at " +
+                "FROM recases_reward_audit WHERE opening_id = ? OR transaction_id = ? OR opening_id LIKE ? OR transaction_id LIKE ? ORDER BY created_at DESC LIMIT 2";
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, normalized);
+            statement.setString(2, normalized);
+            statement.setString(3, normalized + "%");
+            statement.setString(4, normalized + "%");
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<AuditEntry> matches = new ArrayList<>();
+                while (resultSet.next()) {
+                    matches.add(mapAuditEntry(resultSet));
+                }
+                if (matches.isEmpty()) {
+                    return new LookupResult(null, false);
+                }
+                return new LookupResult(matches.get(0), matches.size() > 1);
+            }
+        } catch (SQLException exception) {
+            throw new RuntimeException("Failed to resolve reward audit entry", exception);
+        }
+    }
+
+    private List<AuditEntry> loadActiveEntries(UUID playerId) {
+        if (playerId == null) {
+            return List.of();
+        }
+
+        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at " +
+                "FROM recases_reward_audit WHERE player_id = ? AND rolled_back = ? ORDER BY created_at ASC";
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, playerId.toString());
+            statement.setBoolean(2, false);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<AuditEntry> entries = new ArrayList<>();
+                while (resultSet.next()) {
+                    entries.add(mapAuditEntry(resultSet));
+                }
+                entries.sort(Comparator.comparingLong(AuditEntry::getCreatedAt));
+                return entries;
+            }
+        } catch (SQLException exception) {
+            throw new RuntimeException("Failed to load active audit entries", exception);
+        }
+    }
+
+    private void rebuildPlayerStats(AuditEntry entry) {
+        plugin.getStats().rebuildPlayerFromAudit(entry.getPlayerId(), entry.getPlayerName(), loadActiveEntries(entry.getPlayerId()));
+    }
+
+    private void updateAuditState(UUID openingId, boolean rolledBack, boolean restored, String rollbackActor, String restoreActor) {
+        String sql = "UPDATE recases_reward_audit SET rolled_back = ?, restored = ?, rollback_actor = ?, restore_actor = ?, updated_at = ? WHERE opening_id = ?";
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBoolean(1, rolledBack);
+            statement.setBoolean(2, restored);
+            statement.setString(3, rollbackActor == null ? "" : rollbackActor);
+            statement.setString(4, restoreActor == null ? "" : restoreActor);
+            statement.setLong(5, System.currentTimeMillis());
+            statement.setString(6, openingId.toString());
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw new RuntimeException("Failed to update reward audit state", exception);
+        }
+    }
+
     private void bindPendingStatement(PreparedStatement statement, Player player, CaseRuntime runtime, OpeningSession session,
                                       boolean keyConsumed, boolean rewardGranted, long startedAt, long updatedAt) throws SQLException {
         CaseItem reward = session.getFinalReward();
@@ -370,6 +527,80 @@ public class RewardAuditService implements AutoCloseable {
         statement.setBoolean(15, rewardGranted);
         statement.setLong(16, startedAt);
         statement.setLong(17, updatedAt);
+    }
+
+    private void bindAuditStatement(PreparedStatement statement, Player player, String runtimeId, String animationId, String caseProfile,
+                                    OpeningSession session, CaseItem reward, String serverId, boolean rolledBack, boolean restored,
+                                    String rollbackActor, String restoreActor, long timestamp) throws SQLException {
+        bindAuditStatement(
+                statement,
+                player,
+                runtimeId,
+                animationId,
+                caseProfile,
+                session.getTransactionId(),
+                session.getOpeningId(),
+                reward,
+                session.isGuaranteedReward(),
+                session.getPityBeforeOpen(),
+                serverId,
+                rolledBack,
+                restored,
+                rollbackActor,
+                restoreActor,
+                timestamp
+        );
+    }
+
+    private void bindAuditStatement(PreparedStatement statement, Player player, String runtimeId, String animationId, String caseProfile,
+                                    UUID transactionId, UUID openingId, CaseItem reward, boolean guaranteedReward, int pityBefore,
+                                    String serverId, boolean rolledBack, boolean restored, String rollbackActor,
+                                    String restoreActor, long timestamp) throws SQLException {
+        statement.setString(1, openingId.toString());
+        statement.setString(2, transactionId.toString());
+        statement.setString(3, player.getUniqueId().toString());
+        statement.setString(4, player.getName());
+        statement.setString(5, caseProfile);
+        statement.setString(6, runtimeId);
+        statement.setString(7, animationId);
+        statement.setString(8, reward.getId());
+        statement.setString(9, reward.getName());
+        statement.setBoolean(10, reward.isRare());
+        statement.setBoolean(11, guaranteedReward);
+        statement.setInt(12, pityBefore);
+        statement.setInt(13, reward.isRare() ? 0 : pityBefore + 1);
+        statement.setString(14, serverId);
+        statement.setBoolean(15, rolledBack);
+        statement.setBoolean(16, restored);
+        statement.setString(17, rollbackActor == null ? "" : rollbackActor);
+        statement.setString(18, restoreActor == null ? "" : restoreActor);
+        statement.setLong(19, timestamp);
+        statement.setLong(20, timestamp);
+    }
+
+    private AuditEntry mapAuditEntry(ResultSet resultSet) throws SQLException {
+        return new AuditEntry(
+                parseUuid(resultSet.getString("opening_id")),
+                parseUuid(resultSet.getString("transaction_id")),
+                parseUuid(resultSet.getString("player_id")),
+                resultSet.getString("player_name"),
+                resultSet.getString("case_profile"),
+                resultSet.getString("runtime_id"),
+                resultSet.getString("animation_id"),
+                resultSet.getString("reward_id"),
+                resultSet.getString("reward_name"),
+                resultSet.getBoolean("rare_reward"),
+                resultSet.getBoolean("guaranteed_reward"),
+                Math.max(0, resultSet.getInt("pity_before")),
+                Math.max(0, resultSet.getInt("pity_after")),
+                resultSet.getString("server_id"),
+                resultSet.getBoolean("rolled_back"),
+                resultSet.getBoolean("restored"),
+                resultSet.getString("rollback_actor"),
+                resultSet.getString("restore_actor"),
+                resultSet.getLong("created_at"),
+                resultSet.getLong("updated_at")
+        );
     }
 
     private Connection openConnection() throws SQLException {
@@ -410,7 +641,12 @@ public class RewardAuditService implements AutoCloseable {
                     "pity_before INT NOT NULL," +
                     "pity_after INT NOT NULL," +
                     "server_id VARCHAR(64) NOT NULL," +
-                    "created_at BIGINT NOT NULL" +
+                    "rolled_back BOOLEAN NOT NULL DEFAULT FALSE," +
+                    "restored BOOLEAN NOT NULL DEFAULT FALSE," +
+                    "rollback_actor VARCHAR(96) NOT NULL DEFAULT ''," +
+                    "restore_actor VARCHAR(96) NOT NULL DEFAULT ''," +
+                    "created_at BIGINT NOT NULL," +
+                    "updated_at BIGINT NOT NULL" +
                     ")";
         }
 
@@ -429,7 +665,12 @@ public class RewardAuditService implements AutoCloseable {
                 "pity_before INTEGER NOT NULL," +
                 "pity_after INTEGER NOT NULL," +
                 "server_id TEXT NOT NULL," +
-                "created_at INTEGER NOT NULL" +
+                "rolled_back INTEGER NOT NULL DEFAULT 0," +
+                "restored INTEGER NOT NULL DEFAULT 0," +
+                "rollback_actor TEXT NOT NULL DEFAULT ''," +
+                "restore_actor TEXT NOT NULL DEFAULT ''," +
+                "created_at INTEGER NOT NULL," +
+                "updated_at INTEGER NOT NULL" +
                 ")";
     }
 
@@ -547,11 +788,17 @@ public class RewardAuditService implements AutoCloseable {
         private final int pityBefore;
         private final int pityAfter;
         private final String serverId;
+        private final boolean rolledBack;
+        private final boolean restored;
+        private final String rollbackActor;
+        private final String restoreActor;
         private final long createdAt;
+        private final long updatedAt;
 
         private AuditEntry(UUID openingId, UUID transactionId, UUID playerId, String playerName, String caseProfile, String runtimeId,
                            String animationId, String rewardId, String rewardName, boolean rareReward, boolean guaranteedReward,
-                           int pityBefore, int pityAfter, String serverId, long createdAt) {
+                           int pityBefore, int pityAfter, String serverId, boolean rolledBack, boolean restored,
+                           String rollbackActor, String restoreActor, long createdAt, long updatedAt) {
             this.openingId = openingId;
             this.transactionId = transactionId;
             this.playerId = playerId;
@@ -566,7 +813,12 @@ public class RewardAuditService implements AutoCloseable {
             this.pityBefore = pityBefore;
             this.pityAfter = pityAfter;
             this.serverId = serverId == null ? "" : serverId;
+            this.rolledBack = rolledBack;
+            this.restored = restored;
+            this.rollbackActor = rollbackActor == null ? "" : rollbackActor;
+            this.restoreActor = restoreActor == null ? "" : restoreActor;
             this.createdAt = createdAt;
+            this.updatedAt = updatedAt;
         }
 
         public UUID getOpeningId() {
@@ -625,8 +877,28 @@ public class RewardAuditService implements AutoCloseable {
             return serverId;
         }
 
+        public boolean isRolledBack() {
+            return rolledBack;
+        }
+
+        public boolean isRestored() {
+            return restored;
+        }
+
+        public String getRollbackActor() {
+            return rollbackActor;
+        }
+
+        public String getRestoreActor() {
+            return restoreActor;
+        }
+
         public long getCreatedAt() {
             return createdAt;
+        }
+
+        public long getUpdatedAt() {
+            return updatedAt;
         }
     }
 
@@ -737,6 +1009,48 @@ public class RewardAuditService implements AutoCloseable {
 
         public long getUpdatedAt() {
             return updatedAt;
+        }
+    }
+
+    public static final class MutationResult {
+        private final boolean success;
+        private final String message;
+        private final AuditEntry entry;
+
+        private MutationResult(boolean success, String message, AuditEntry entry) {
+            this.success = success;
+            this.message = message == null ? "" : message;
+            this.entry = entry;
+        }
+
+        public static MutationResult success(String message, AuditEntry entry) {
+            return new MutationResult(true, message, entry);
+        }
+
+        public static MutationResult failed(String message) {
+            return new MutationResult(false, message, null);
+        }
+
+        public boolean isSuccess() {
+            return success;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public AuditEntry getEntry() {
+            return entry;
+        }
+    }
+
+    private static final class LookupResult {
+        private final AuditEntry entry;
+        private final boolean ambiguous;
+
+        private LookupResult(AuditEntry entry, boolean ambiguous) {
+            this.entry = entry;
+            this.ambiguous = ambiguous;
         }
     }
 }

@@ -6,9 +6,9 @@ import net.recases.gui.Menu;
 import net.recases.gui.MenuSlot;
 import net.recases.runtime.CaseRuntime;
 import net.recases.services.TextFormatter;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
+import org.bukkit.inventory.ItemStack;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -28,20 +28,22 @@ public class CasesGUI {
     }
 
     public void open(Player player) {
-        if (plugin.getCaseService().getProfiles().isEmpty()) {
-            plugin.getMessages().send(player, "messages.menu-not-configured", "#ff6b6bВ конфиге нет профилей кейсов.");
+        List<CaseProfile> profiles = plugin.getCaseService().getAvailableProfiles(player, runtime);
+        if (profiles.isEmpty()) {
+            plugin.getMessages().send(player, "messages.menu-not-configured", "#ff6b6bР’ РєРѕРЅС„РёРіРµ РЅРµС‚ РїСЂРѕС„РёР»РµР№ РєРµР№СЃРѕРІ.");
             return;
         }
 
         Menu menu = plugin.getMenuManager().createMenu(
                 "case-selector:" + runtime.getId(),
-                plugin.getMessages().getComponent("menus.case-selector.title", "#ffd166Кейсы"),
+                plugin.getMessages().getComponent("menus.case-selector.title", "#ffd166РљРµР№СЃС‹"),
                 plugin.getConfig().getInt("menus.case-selector.rows", 6)
         );
         menu.cancelTopInventoryClicks(true).cancelBottomInventoryClicks(true);
         int addedProfiles = 0;
+        boolean previewFirst = plugin.getBedrockSupport().shouldUsePreviewFirstMenus(player);
 
-        for (CaseProfile profile : plugin.getCaseService().getProfiles()) {
+        for (CaseProfile profile : profiles) {
             if (profile.getMenuSlot() < 0 || profile.getMenuSlot() >= menu.getInventory().getSize()) {
                 plugin.getLogger().warning("Skipped profile '" + profile.getId() + "': menu slot " + profile.getMenuSlot()
                         + " is outside inventory size " + menu.getInventory().getSize() + ".");
@@ -53,23 +55,25 @@ public class CasesGUI {
                 continue;
             }
 
-            Material material = Material.matchMaterial(profile.getMenuMaterial());
             List<String> lore = profile.getMenuLore().stream()
                     .map(line -> line.replace("%keys%", String.valueOf(plugin.getStorage().getCaseAmount(player, profile.getId()))))
                     .map(textFormatter::colorize)
                     .collect(Collectors.toList());
-            lore.add(textFormatter.colorize(plugin.getMessages().get("menus.case-selector.open-hint", "#80ed99ЛКМ: открыть кейс")));
-            lore.add(textFormatter.colorize(plugin.getMessages().get("menus.case-selector.preview-hint", "#74c0fcПКМ: превью наград")));
+            if (previewFirst) {
+                lore.add(textFormatter.colorize(plugin.getMessages().get("menus.case-selector.bedrock-hint", "#74c0fcTap to preview rewards and open")));
+            } else {
+                lore.add(textFormatter.colorize(plugin.getMessages().get("menus.case-selector.open-hint", "#80ed99Р›РљРњ: РѕС‚РєСЂС‹С‚СЊ РєРµР№СЃ")));
+                lore.add(textFormatter.colorize(plugin.getMessages().get("menus.case-selector.preview-hint", "#74c0fcРџРљРњ: РїСЂРµРІСЊСЋ РЅР°РіСЂР°Рґ")));
+            }
 
-            menu.setSlot(profile.getMenuSlot(), new MenuSlot(material == null ? Material.CHEST : material)
-                    .setDisplay(textFormatter.colorize(profile.getMenuDisplay()))
-                    .setLoreList(lore)
+            ItemStack icon = plugin.getItemFactory().create(profile.getMenuMaterial(), profile.getMenuDisplay(), lore);
+            menu.setSlot(profile.getMenuSlot(), new MenuSlot(icon)
                     .setListener((clicker, clickType, openedMenu, clickedSlot) -> handleProfileClick(clicker, clickType, profile.getId())));
             addedProfiles++;
         }
 
         if (addedProfiles == 0) {
-            plugin.getMessages().send(player, "messages.menu-not-configured", "#ff6b6bВ конфиге нет корректных профилей кейсов.");
+            plugin.getMessages().send(player, "messages.menu-not-configured", "#ff6b6bР’ РєРѕРЅС„РёРіРµ РЅРµС‚ РєРѕСЂСЂРµРєС‚РЅС‹С… РїСЂРѕС„РёР»РµР№ РєРµР№СЃРѕРІ.");
             return;
         }
 
@@ -77,6 +81,11 @@ public class CasesGUI {
     }
 
     private void handleProfileClick(Player player, ClickType clickType, String profileId) {
+        if (plugin.getBedrockSupport().shouldUsePreviewFirstMenus(player)) {
+            previewGUI.open(player, runtime, profileId);
+            return;
+        }
+
         if (clickType == ClickType.RIGHT || clickType == ClickType.SHIFT_RIGHT) {
             previewGUI.open(player, runtime, profileId);
             return;

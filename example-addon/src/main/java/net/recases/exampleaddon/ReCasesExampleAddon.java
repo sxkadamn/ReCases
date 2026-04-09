@@ -2,6 +2,7 @@ package net.recases.exampleaddon;
 
 import net.recases.api.ReCasesApi;
 import net.recases.api.animation.OpeningAnimationRegistration;
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class ReCasesExampleAddon extends JavaPlugin {
@@ -34,5 +35,21 @@ public final class ReCasesExampleAddon extends JavaPlugin {
         }
 
         getLogger().info("Зарегистрирована анимация открытия '" + ANIMATION_ID + "'.");
+
+        api.getRewardActionRegistry().register("crystal-broadcast", (context, arguments) -> {
+            if (arguments.length < 2) {
+                return;
+            }
+            Bukkit.broadcastMessage("[CrystalAddon] " + context.replaceTokens(arguments[1]));
+        });
+
+        api.getConditionRegistry().register("crystal-player", (context, arguments) ->
+                arguments.length < 2 || context.getPlayer().getName().equalsIgnoreCase(context.replaceTokens(arguments[1])));
+
+        api.getTriggerRegistry().register("reward-granted", context -> {
+            if (ANIMATION_ID.equalsIgnoreCase(context.getAnimationId())) {
+                getLogger().info("Триггер reward-granted сработал для анимации crystal-burst и игрока " + context.getPlayer().getName());
+            }
+        });
     }
 }

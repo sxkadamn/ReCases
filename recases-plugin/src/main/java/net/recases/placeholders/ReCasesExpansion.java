@@ -56,6 +56,14 @@ public class ReCasesExpansion extends PlaceholderExpansion {
         if ("opens_today".equals(normalized)) {
             return player == null ? "0" : String.valueOf(plugin.getStats().getOpensToday(player, null));
         }
+        if ("pity_boost".equals(normalized)) {
+            if (player == null) {
+                return "1.00";
+            }
+            String lastProfile = plugin.getStats().getLastRewardProfile(player);
+            CaseProfile profile = lastProfile.isEmpty() ? null : plugin.getCaseService().getProfile(lastProfile);
+            return profile == null ? "1.00" : String.format(Locale.US, "%.2f", profile.getPitySettings().getRareWeightMultiplier(plugin.getStats().getPity(player, profile.getId())));
+        }
         if ("global_opens".equals(normalized)) {
             return String.valueOf(plugin.getStats().getGlobalOpens());
         }
@@ -112,6 +120,13 @@ public class ReCasesExpansion extends PlaceholderExpansion {
 
             CaseProfile profile = plugin.getCaseService().getProfile(normalized.substring("pity_left_".length()));
             return profile == null ? "0" : String.valueOf(plugin.getStats().getPityLeft(player, profile));
+        }
+        if (normalized.startsWith("pity_boost_")) {
+            if (player == null) {
+                return "1.00";
+            }
+            CaseProfile profile = plugin.getCaseService().getProfile(normalized.substring("pity_boost_".length()));
+            return profile == null ? "1.00" : String.format(Locale.US, "%.2f", profile.getPitySettings().getRareWeightMultiplier(plugin.getStats().getPity(player, profile.getId())));
         }
         if (normalized.startsWith("guarantee_chance_")) {
             if (player == null) {

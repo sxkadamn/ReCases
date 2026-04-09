@@ -1,0 +1,7 @@
+RECASES_RUBY_SWORD:
+  base:
+    material: DIAMOND_SWORD
+    name: '&x&f&f&6&6&8&8Ruby Sword'
+    attack-damage: 8.0
+    attack-speed: 1.6
+    custom-model-data: 10001

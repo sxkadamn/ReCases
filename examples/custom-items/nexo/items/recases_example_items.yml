@@ -1,0 +1,6 @@
+recases_ruby_sword:
+  itemname: "<#ff6688>Ruby Sword"
+  material: DIAMOND_SWORD
+  Pack:
+    parent_model: "item/handheld"
+    texture: recases:item/ruby_sword

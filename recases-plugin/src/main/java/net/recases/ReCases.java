@@ -21,16 +21,22 @@ import net.recases.runtime.cache.KeyCache;
 import net.recases.runtime.registry.EntityRegistry;
 import net.recases.services.AnimationService;
 import net.recases.services.BStatsService;
+import net.recases.services.BedrockSupportService;
 import net.recases.services.CaseService;
+import net.recases.services.CaseConditionService;
+import net.recases.services.CaseTriggerService;
 import net.recases.services.ConfigService;
+import net.recases.services.DiscordBotService;
 import net.recases.services.ItemFactory;
 import net.recases.services.LeaderboardHologramService;
 import net.recases.services.MessageService;
 import net.recases.services.NetworkSyncService;
+import net.recases.services.RedisSyncService;
 import net.recases.services.RewardService;
 import net.recases.services.SchematicService;
 import net.recases.services.DiscordWebhookService;
 import net.recases.services.OpeningResultService;
+import net.recases.services.PromoCodeService;
 import net.recases.services.RewardAuditService;
 import net.recases.services.StatsService;
 import net.recases.services.StorageService;
@@ -61,6 +67,9 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     private MessageService messageService;
     private ConfigService configService;
     private AnimationService animationService;
+    private BedrockSupportService bedrockSupportService;
+    private CaseConditionService conditionService;
+    private CaseTriggerService triggerService;
     private RewardService rewardService;
     private StorageService storageService;
     private StatsService statsService;
@@ -69,9 +78,12 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     private CaseService caseService;
     private RewardAuditService rewardAuditService;
     private DiscordWebhookService discordWebhookService;
+    private DiscordBotService discordBotService;
     private OpeningResultService openingResultService;
+    private PromoCodeService promoCodeService;
     private UpdateService updateService;
     private NetworkSyncService networkSyncService;
+    private RedisSyncService redisSyncService;
 
     @Override
     public void onEnable() {
@@ -89,21 +101,27 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         keyCache = new KeyCache();
         menuManager = new MenuManager();
         textFormatter = new TextFormatter();
-        itemFactory = new ItemFactory();
+        itemFactory = new ItemFactory(this);
         worldService = new WorldService(this);
         schematicService = new SchematicService(this);
         messageService = new MessageService(this, textFormatter);
         configService = new ConfigService(this);
         animationService = new AnimationService(this);
+        bedrockSupportService = new BedrockSupportService(this);
+        conditionService = new CaseConditionService(this);
+        triggerService = new CaseTriggerService(this);
         rewardService = new RewardService(this, textFormatter, itemFactory);
-        storageService = new StorageService(this, keyCache);
         statsService = new StatsService(this);
+        redisSyncService = new RedisSyncService(this, keyCache, statsService);
+        storageService = new StorageService(this, keyCache, redisSyncService);
         bStatsService = new BStatsService(this);
         rewardAuditService = new RewardAuditService(this);
         discordWebhookService = new DiscordWebhookService(this);
+        discordBotService = new DiscordBotService(this);
         leaderboardHologramService = new LeaderboardHologramService(this, textFormatter);
         caseService = new CaseService(this, entityRegistry, itemFactory, textFormatter, worldService);
         openingResultService = new OpeningResultService(this);
+        promoCodeService = new PromoCodeService(this);
         updateService = new UpdateService(this);
         networkSyncService = new NetworkSyncService(this, keyCache, statsService);
 
@@ -129,7 +147,10 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         closeSafely(storageService);
         closeSafely(rewardAuditService);
         closeSafely(discordWebhookService);
+        closeSafely(discordBotService);
+        closeSafely(promoCodeService);
         closeSafely(updateService);
+        closeSafely(redisSyncService);
     }
 
     public void reloadPluginState() {
@@ -137,9 +158,13 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         schematicService.reload();
         messageService.reload();
         caseService.clear();
-        storageService.reload();
         statsService.reload();
+        redisSyncService.reload();
+        storageService.reload();
+        promoCodeService.reload();
         discordWebhookService.reload();
+        discordBotService.reload();
+        bedrockSupportService.reload();
         caseService.reload();
         rewardAuditService.reload();
         leaderboardHologramService.reload();
@@ -217,8 +242,28 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         return rewardService;
     }
 
+    @Override
+    public CaseConditionService getConditionService() {
+        return conditionService;
+    }
+
+    @Override
+    public CaseTriggerService getTriggerService() {
+        return triggerService;
+    }
+
     public AnimationService getAnimations() {
         return animationService;
+    }
+
+    @Override
+    public BedrockSupportService getBedrockSupport() {
+        return bedrockSupportService;
+    }
+
+    @Override
+    public RedisSyncService getRedisSync() {
+        return redisSyncService;
     }
 
     @Override
@@ -229,6 +274,21 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
     @Override
     public AnimationService getOpeningAnimationRegistry() {
         return animationService;
+    }
+
+    @Override
+    public RewardService getRewardActionRegistry() {
+        return rewardService;
+    }
+
+    @Override
+    public CaseConditionService getConditionRegistry() {
+        return conditionService;
+    }
+
+    @Override
+    public CaseTriggerService getTriggerRegistry() {
+        return triggerService;
     }
 
     public StorageService getStorage() {
@@ -255,8 +315,18 @@ public final class ReCases extends JavaPlugin implements PluginContext, ReCasesA
         return discordWebhookService;
     }
 
+    @Override
+    public DiscordBotService getDiscordBot() {
+        return discordBotService;
+    }
+
     public OpeningResultService getOpeningResults() {
         return openingResultService;
+    }
+
+    @Override
+    public PromoCodeService getPromoCodes() {
+        return promoCodeService;
     }
 
     public UpdateService getUpdater() {

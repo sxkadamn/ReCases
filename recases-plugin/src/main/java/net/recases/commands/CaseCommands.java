@@ -6,6 +6,7 @@ import net.recases.gui.create.CaseEditorGUI;
 import net.recases.management.CaseItem;
 import net.recases.runtime.CaseRuntime;
 import net.recases.services.MessageService;
+import net.recases.services.PromoCodeService;
 import net.recases.services.RewardAuditService;
 import net.recases.stats.LeaderboardEntry;
 import net.recases.stats.LeaderboardType;
@@ -39,10 +40,11 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
     private static final List<String> SUBCOMMANDS = Arrays.asList(
             "help", "list", "instances", "keys", "give", "take", "setamount", "set", "reload", "top",
             "createprofile", "deleteprofile", "createinstance", "deleteinstance", "setprofileanimation", "setinstanceanimation", "edit", "preset",
-            "testanim", "simulate", "audit"
+            "testanim", "simulate", "audit", "history", "rollback", "restore", "promocode", "redeem"
     );
     private static final List<String> TOP_TYPES = Arrays.asList("opens", "rare", "guaranteed");
     private static final List<String> PRESET_ACTIONS = Arrays.asList("list", "export", "import");
+    private static final List<String> PROMOCODE_ACTIONS = Arrays.asList("list", "create", "delete");
     private static final DateTimeFormatter AUDIT_TIME_FORMAT = DateTimeFormatter.ofPattern("dd.MM HH:mm").withZone(ZoneId.systemDefault());
 
     private final PluginContext plugin;
@@ -57,23 +59,27 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
-        if (!sender.hasPermission("recases.admin")) {
+        String subcommand = args.length == 0 ? "help" : args[0].toLowerCase(Locale.ROOT);
+        boolean admin = sender.hasPermission("recases.admin");
+
+        if ("help".equals(subcommand)) {
+            showHelp(sender, label, admin);
+            return true;
+        }
+
+        if ("redeem".equals(subcommand)) {
+            return redeemCode(sender, args);
+        }
+        if ("history".equals(subcommand) && !admin) {
+            return showHistory(sender, args, false);
+        }
+
+        if (!admin) {
             messages.send(sender, "messages.no-permission", "У вас нет прав.");
             return true;
         }
 
-        if (args.length == 0 || "help".equalsIgnoreCase(args[0])) {
-            messages.sendList(sender, "messages.help", Collections.emptyList(), "%label%", label);
-            messages.send(sender, "messages.help-top", "#ffd166/%label% top <opens|rare|guaranteed> [profile] [limit] #a8dadc- показать таблицы лидеров", "%label%", label);
-            messages.send(sender, "messages.help-editor", "#ffd166/%label% edit <profile> #a8dadc- открыть редактор наград", "%label%", label);
-            messages.send(sender, "messages.help-preset", "#ffd166/%label% preset <list|export|import> ... #a8dadc- работа с пресетами", "%label%", label);
-            messages.send(sender, "messages.help-testanim", "#ffd166/%label% testanim <animation> [profile] [instance] #a8dadc- тест анимации", "%label%", label);
-            messages.send(sender, "messages.help-simulate", "#ffd166/%label% simulate <profile> <opens> #a8dadc- симулятор дропа", "%label%", label);
-            messages.send(sender, "messages.help-audit", "#ffd166/%label% audit [player] [limit] #a8dadc- журнал наград", "%label%", label);
-            return true;
-        }
-
-        switch (args[0].toLowerCase(Locale.ROOT)) {
+        switch (subcommand) {
             case "list":
                 showProfiles(sender);
                 return true;
@@ -118,10 +124,36 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 return simulateDrops(sender, args);
             case "audit":
                 return showAudit(sender, args);
+            case "history":
+                return showHistory(sender, args, true);
+            case "rollback":
+                return rollbackReward(sender, args);
+            case "restore":
+                return restoreReward(sender, args);
+            case "promocode":
+                return handlePromoCode(sender, args);
             default:
                 messages.send(sender, "messages.command-unknown", "Неизвестная подкоманда.");
                 return true;
         }
+    }
+
+    private void showHelp(CommandSender sender, String label, boolean admin) {
+        messages.sendList(sender, "messages.help", Collections.emptyList(), "%label%", label);
+        messages.send(sender, "messages.help-history", "#ffd166/%label% history [player|limit] #a8dadc- история открытий", "%label%", label);
+        messages.send(sender, "messages.help-redeem", "#ffd166/%label% redeem <code> #a8dadc- активировать промокод", "%label%", label);
+        if (!admin) {
+            return;
+        }
+        messages.send(sender, "messages.help-top", "#ffd166/%label% top <opens|rare|guaranteed> [profile] [limit] #a8dadc- показать таблицы лидеров", "%label%", label);
+        messages.send(sender, "messages.help-editor", "#ffd166/%label% edit <profile> #a8dadc- открыть редактор наград", "%label%", label);
+        messages.send(sender, "messages.help-preset", "#ffd166/%label% preset <list|export|import> ... #a8dadc- работа с пресетами", "%label%", label);
+        messages.send(sender, "messages.help-testanim", "#ffd166/%label% testanim <animation> [profile] [instance] #a8dadc- тест анимации", "%label%", label);
+        messages.send(sender, "messages.help-simulate", "#ffd166/%label% simulate <profile> <opens> #a8dadc- симулятор дропа", "%label%", label);
+        messages.send(sender, "messages.help-audit", "#ffd166/%label% audit [player] [limit] #a8dadc- сырой журнал наград", "%label%", label);
+        messages.send(sender, "messages.help-rollback", "#ffd166/%label% rollback <tx|opening> #a8dadc- откатить выдачу", "%label%", label);
+        messages.send(sender, "messages.help-restore", "#ffd166/%label% restore <tx|opening> #a8dadc- восстановить откат", "%label%", label);
+        messages.send(sender, "messages.help-promocode", "#ffd166/%label% promocode <list|create|delete> ... #a8dadc- управление промокодами", "%label%", label);
     }
 
     private void showProfiles(CommandSender sender) {
@@ -215,6 +247,7 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         int applied = mode == ChangeMode.TAKE ? Math.min(amount, before) : amount;
         messages.send(sender, mode.messagePath, mode.messageFallback, "%player%", playerName(target), "%amount%", String.valueOf(applied), "%case%", profileId);
         messages.send(sender, "messages.case-balance-after", "Текущий баланс %player%: %amount% ключ(ей) для %case%.", "%player%", playerName(target), "%amount%", String.valueOf(plugin.getStorage().getCaseAmount(target, profileId)), "%case%", profileId);
+        logModeration(sender.getName(), subcommandLabel(mode), "player=" + playerName(target) + " profile=" + profileId + " amount=" + applied);
         return true;
     }
 
@@ -503,10 +536,12 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         int guaranteedHits = 0;
         int pity = 0;
         for (int i = 0; i < opens; i++) {
-            boolean guaranteed = profile.getGuaranteeAfterOpens() > 0
-                    && profile.hasRareRewards()
-                    && pity + 1 >= profile.getGuaranteeAfterOpens();
-            CaseItem reward = guaranteed ? profile.pickReward(random, true) : profile.pickReward(random);
+            boolean guaranteed = profile.getPitySettings().isHardGuaranteeReached(pity) && profile.hasRareRewards();
+            CaseItem reward = profile.pickReward(random, guaranteed, pity, candidate -> true);
+            if (reward == null && guaranteed) {
+                guaranteed = false;
+                reward = profile.pickReward(random, false, pity, candidate -> true);
+            }
             if (reward == null) {
                 continue;
             }
@@ -529,6 +564,56 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder()))
                 .limit(5)
                 .forEach(entry -> messages.send(sender, "messages.simulate-line", "#ffffff%reward% #ffd166- %count%", "%reward%", entry.getKey(), "%count%", String.valueOf(entry.getValue())));
+        return true;
+    }
+
+    private boolean showHistory(CommandSender sender, String[] args, boolean adminMode) {
+        OfflinePlayer target = null;
+        int limit = 10;
+
+        if (adminMode) {
+            if (args.length >= 2 && !isInteger(args[1])) {
+                target = findPlayer(args[1]);
+                if (target == null) {
+                    messages.send(sender, "messages.player-not-found", "Игрок не найден.");
+                    return true;
+                }
+            } else if (args.length >= 2) {
+                limit = parsePositiveInt(args[1], 10);
+            }
+            if (args.length >= 3) {
+                limit = parsePositiveInt(args[2], limit);
+            }
+        } else {
+            if (!(sender instanceof Player player)) {
+                messages.send(sender, "messages.player-only", "Эта команда доступна только игрокам.");
+                return true;
+            }
+            target = player;
+            if (args.length >= 2) {
+                limit = parsePositiveInt(args[1], 10);
+            }
+        }
+
+        List<RewardAuditService.AuditEntry> entries = plugin.getRewardAudit().getRecentEntries(target == null ? null : target.getUniqueId(), limit);
+        if (entries.isEmpty()) {
+            messages.send(sender, "messages.top-empty", "История открытий пока пуста.");
+            return true;
+        }
+
+        messages.send(sender, "messages.history-header", "#74c0fcИстория открытий (%count%)", "%count%", String.valueOf(entries.size()));
+        for (RewardAuditService.AuditEntry entry : entries) {
+            String state = entry.isRolledBack() ? "rolled-back" : entry.isRestored() ? "restored" : "active";
+            messages.send(sender,
+                    "messages.history-line",
+                    "#a8dadc[%time%] #ffffff%player% #ffd166-> %reward% #a8dadccase=%case% state=%state% tx=%tx%",
+                    "%time%", AUDIT_TIME_FORMAT.format(Instant.ofEpochMilli(entry.getCreatedAt())),
+                    "%player%", entry.getPlayerName(),
+                    "%reward%", entry.getRewardName(),
+                    "%case%", entry.getCaseProfile(),
+                    "%state%", state,
+                    "%tx%", shortTransaction(entry.getTransactionId()));
+        }
         return true;
     }
 
@@ -573,6 +658,120 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean rollbackReward(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            messages.send(sender, "messages.usage-rollback", "/cases rollback <tx|opening>");
+            return true;
+        }
+
+        RewardAuditService.MutationResult result = plugin.getRewardAudit().rollbackEntry(args[1], sender.getName());
+        messages.send(sender, result.isSuccess() ? "messages.rollback-success" : "messages.rollback-failed", result.getMessage());
+        if (result.isSuccess() && result.getEntry() != null) {
+            logModeration(sender.getName(), "rollback", "tx=" + shortTransaction(result.getEntry().getTransactionId()) + " player=" + result.getEntry().getPlayerName());
+        }
+        return true;
+    }
+
+    private boolean restoreReward(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            messages.send(sender, "messages.usage-restore", "/cases restore <tx|opening>");
+            return true;
+        }
+
+        RewardAuditService.MutationResult result = plugin.getRewardAudit().restoreEntry(args[1], sender.getName());
+        messages.send(sender, result.isSuccess() ? "messages.restore-success" : "messages.restore-failed", result.getMessage());
+        if (result.isSuccess() && result.getEntry() != null) {
+            logModeration(sender.getName(), "restore", "tx=" + shortTransaction(result.getEntry().getTransactionId()) + " player=" + result.getEntry().getPlayerName());
+        }
+        return true;
+    }
+
+    private boolean handlePromoCode(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            messages.send(sender, "messages.usage-promocode", "/cases promocode <list|create|delete> ...");
+            return true;
+        }
+
+        switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "list":
+                List<PromoCodeService.PromoCodeEntry> entries = plugin.getPromoCodes().listCodes(20);
+                if (entries.isEmpty()) {
+                    messages.send(sender, "messages.promocode-empty", "#ff6b6bПромокоды не найдены.");
+                    return true;
+                }
+                messages.send(sender, "messages.promocode-header", "#74c0fcПромокоды (%count%)", "%count%", String.valueOf(entries.size()));
+                for (PromoCodeService.PromoCodeEntry entry : entries) {
+                    messages.send(sender,
+                            "messages.promocode-line",
+                            "#a8dadc%code% #ffffffprofile=%profile% amount=%amount% uses=%used%/%max%",
+                            "%code%", entry.code(),
+                            "%profile%", entry.profileId(),
+                            "%amount%", String.valueOf(entry.amount()),
+                            "%used%", String.valueOf(entry.usedCount()),
+                            "%max%", String.valueOf(entry.maxUses()));
+                }
+                return true;
+            case "create":
+                if (args.length < 5) {
+                    messages.send(sender, "messages.usage-promocode-create", "/cases promocode create <code> <profile> <amount> [maxUses]");
+                    return true;
+                }
+                String profileId = args[3].toLowerCase(Locale.ROOT);
+                if (!plugin.getCaseService().hasProfile(profileId)) {
+                    messages.send(sender, "messages.case-not-found", "Профиль кейса '%case%' не найден.", "%case%", profileId);
+                    return true;
+                }
+                int amount = parsePositiveInt(args[4], 1);
+                int maxUses = args.length >= 6 ? parsePositiveInt(args[5], 1) : 1;
+                if (!plugin.getPromoCodes().createCode(args[2], profileId, amount, maxUses, sender.getName())) {
+                    messages.send(sender, "messages.promocode-create-failed", "#ff6b6bНе удалось создать промокод.");
+                    return true;
+                }
+                messages.send(sender, "messages.promocode-created", "#80ed99Промокод #ffffff%code% #80ed99создан.", "%code%", args[2].toLowerCase(Locale.ROOT));
+                logModeration(sender.getName(), "promocode-create", "code=" + args[2].toLowerCase(Locale.ROOT) + " profile=" + profileId + " amount=" + amount + " maxUses=" + maxUses);
+                return true;
+            case "delete":
+                if (args.length < 3) {
+                    messages.send(sender, "messages.usage-promocode-delete", "/cases promocode delete <code>");
+                    return true;
+                }
+                if (!plugin.getPromoCodes().deleteCode(args[2])) {
+                    messages.send(sender, "messages.promocode-delete-failed", "#ff6b6bПромокод не найден.");
+                    return true;
+                }
+                messages.send(sender, "messages.promocode-deleted", "#ffd166Промокод #ffffff%code% #ffd166удален.", "%code%", args[2].toLowerCase(Locale.ROOT));
+                logModeration(sender.getName(), "promocode-delete", "code=" + args[2].toLowerCase(Locale.ROOT));
+                return true;
+            default:
+                messages.send(sender, "messages.usage-promocode", "/cases promocode <list|create|delete> ...");
+                return true;
+        }
+    }
+
+    private boolean redeemCode(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            messages.send(sender, "messages.player-only", "Эта команда доступна только игрокам.");
+            return true;
+        }
+        if (args.length < 2) {
+            messages.send(sender, "messages.usage-redeem", "/cases redeem <code>");
+            return true;
+        }
+
+        PromoCodeService.RedemptionResult result = plugin.getPromoCodes().redeem(player, args[1]);
+        if (!result.success()) {
+            messages.send(sender, "messages.redeem-failed", result.message());
+            return true;
+        }
+
+        messages.send(sender,
+                "messages.redeem-success",
+                "#80ed99Промокод активирован: #ffffff%amount% #80ed99ключ(ей) для #ffffff%case%",
+                "%amount%", String.valueOf(result.amount()),
+                "%case%", result.profileId());
+        return true;
+    }
+
     private CaseRuntime findNearestRuntime(Player player) {
         if (player == null || player.getWorld() == null) {
             return null;
@@ -596,7 +795,14 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
-        if (!sender.hasPermission("recases.admin")) {
+        boolean admin = sender.hasPermission("recases.admin");
+        if (!admin) {
+            if (args.length == 1) {
+                return complete(Arrays.asList("help", "history", "redeem"), args[0]);
+            }
+            if ("history".equalsIgnoreCase(args[0]) && args.length == 2) {
+                return complete(Arrays.asList("5", "10", "20"), args[1]);
+            }
             return Collections.emptyList();
         }
 
@@ -702,6 +908,43 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
                 return complete(Arrays.asList("10", "20", "50"), args[2]);
             }
         }
+        if ("history".equals(subcommand)) {
+            if (args.length == 2) {
+                List<String> values = new ArrayList<>(Arrays.stream(Bukkit.getOfflinePlayers())
+                        .map(OfflinePlayer::getName)
+                        .filter(name -> name != null && !name.isEmpty())
+                        .distinct()
+                        .sorted()
+                        .collect(Collectors.toList()));
+                values.addAll(Arrays.asList("10", "20", "50"));
+                return complete(values, args[1]);
+            }
+            if (args.length == 3) {
+                return complete(Arrays.asList("10", "20", "50"), args[2]);
+            }
+        }
+        if (Arrays.asList("rollback", "restore").contains(subcommand) && args.length == 2) {
+            return Collections.emptyList();
+        }
+        if ("promocode".equals(subcommand)) {
+            if (args.length == 2) {
+                return complete(PROMOCODE_ACTIONS, args[1]);
+            }
+            if ("create".equalsIgnoreCase(args[1])) {
+                if (args.length == 4) {
+                    return complete(plugin.getCaseService().getProfileIds(), args[3]);
+                }
+                if (args.length == 5 || args.length == 6) {
+                    return complete(Arrays.asList("1", "3", "5", "10"), args[args.length - 1]);
+                }
+            }
+            if ("delete".equalsIgnoreCase(args[1]) && args.length == 3) {
+                return complete(plugin.getPromoCodes().listCodes(20).stream().map(PromoCodeService.PromoCodeEntry::code).collect(Collectors.toList()), args[2]);
+            }
+        }
+        if ("redeem".equals(subcommand) && args.length == 2) {
+            return complete(plugin.getPromoCodes().listCodes(20).stream().map(PromoCodeService.PromoCodeEntry::code).collect(Collectors.toList()), args[1]);
+        }
         return Collections.emptyList();
     }
 
@@ -746,6 +989,18 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
         } catch (NumberFormatException exception) {
             return fallback;
         }
+    }
+
+    private void logModeration(String actor, String action, String details) {
+        plugin.getDiscordBot().sendModerationLog("minecraft", actor, action, details);
+    }
+
+    private String subcommandLabel(ChangeMode mode) {
+        return switch (mode) {
+            case GIVE -> "give";
+            case TAKE -> "take";
+            case SET -> "setamount";
+        };
     }
 
     private enum ChangeMode {

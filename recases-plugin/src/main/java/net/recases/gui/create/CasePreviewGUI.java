@@ -33,7 +33,7 @@ public final class CasePreviewGUI {
             return;
         }
 
-        List<CaseItem> rewards = new ArrayList<>(profile.getRewards());
+        List<CaseItem> rewards = new ArrayList<>(plugin.getCaseService().getAvailableRewards(player, runtime, profileId));
         rewards.sort(Comparator.comparing(CaseItem::isRare).reversed()
                 .thenComparing(Comparator.comparingInt(CaseItem::getChance).reversed())
                 .thenComparing(CaseItem::getName, String.CASE_INSENSITIVE_ORDER));
@@ -76,7 +76,9 @@ public final class CasePreviewGUI {
                 .setLoreList(List.of(
                         plugin.getMessages().get("menus.preview.pity-current", "#a8dadcТекущий pity: #ffffff%amount%", "%amount%", String.valueOf(pity)),
                         plugin.getMessages().get("menus.preview.pity-left", "#a8dadcДо гаранта: #ffffff%amount%", "%amount%", String.valueOf(pityLeft)),
-                        plugin.getMessages().get("menus.preview.pity-progress", "#a8dadcПрогресс: #ffffff%amount%%", "%amount%", String.valueOf(plugin.getStats().getGuaranteeProgressPercent(player, profile)))
+                        plugin.getMessages().get("menus.preview.pity-progress", "#a8dadcПрогресс: #ffffff%amount%%", "%amount%", String.valueOf(plugin.getStats().getGuaranteeProgressPercent(player, profile))),
+                        plugin.getMessages().get("menus.preview.pity-multiplier", "#a8dadcБуст редкого веса: #ffffffx%amount%",
+                                "%amount%", String.format(Locale.US, "%.2f", profile.getPitySettings().getRareWeightMultiplier(pity)))
                 )));
 
         menu.setSlot(8, new MenuSlot(Material.EMERALD)

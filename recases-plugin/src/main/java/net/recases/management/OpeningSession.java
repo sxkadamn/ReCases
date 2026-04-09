@@ -29,6 +29,7 @@ public class OpeningSession {
     private final Set<UUID> targetEntityIds = new LinkedHashSet<>();
     private final Set<String> openedTargets = new LinkedHashSet<>();
     private Location openingAnchor;
+    private String distributedLockToken = "";
     private boolean keyConsumed;
     private boolean rewardGranted;
 
@@ -118,6 +119,14 @@ public class OpeningSession {
 
     public void setOpeningAnchor(Location openingAnchor) {
         this.openingAnchor = openingAnchor == null ? null : openingAnchor.clone();
+    }
+
+    public String getDistributedLockToken() {
+        return distributedLockToken;
+    }
+
+    public void setDistributedLockToken(String distributedLockToken) {
+        this.distributedLockToken = distributedLockToken == null ? "" : distributedLockToken;
     }
 
     public boolean isParticipant(Player player) {

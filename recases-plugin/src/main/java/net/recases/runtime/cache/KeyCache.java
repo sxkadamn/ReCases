@@ -23,6 +23,18 @@ public class KeyCache {
                 .put(normalizeCaseName(caseName), Math.max(0, amount));
     }
 
+    public void invalidateKeyAmount(UUID playerId, String caseName) {
+        Map<String, Integer> playerCache = cachedKeyAmounts.get(playerId);
+        if (playerCache == null) {
+            return;
+        }
+
+        playerCache.remove(normalizeCaseName(caseName));
+        if (playerCache.isEmpty()) {
+            cachedKeyAmounts.remove(playerId);
+        }
+    }
+
     public int updateKeyAmount(UUID playerId, String caseName, int fallback, IntUnaryOperator updater) {
         return cachedKeyAmounts
                 .computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())

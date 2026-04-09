@@ -1,11 +1,17 @@
 package net.recases.app;
 
+import net.recases.services.CaseConditionService;
+import net.recases.services.CaseTriggerService;
 import net.recases.gui.impl.MenuManager;
 import net.recases.services.AnimationService;
+import net.recases.services.BedrockSupportService;
 import net.recases.services.CaseService;
+import net.recases.services.DiscordBotService;
+import net.recases.services.RedisSyncService;
 import net.recases.services.ItemFactory;
 import net.recases.services.MessageService;
 import net.recases.services.LeaderboardHologramService;
+import net.recases.services.PromoCodeService;
 import net.recases.services.RewardService;
 import net.recases.services.StatsService;
 import net.recases.services.StorageService;
@@ -34,7 +40,15 @@ public interface PluginContext extends Plugin {
 
     RewardService getRewardService();
 
+    CaseConditionService getConditionService();
+
+    CaseTriggerService getTriggerService();
+
     AnimationService getAnimations();
+
+    BedrockSupportService getBedrockSupport();
+
+    RedisSyncService getRedisSync();
 
     StorageService getStorage();
 
@@ -48,7 +62,11 @@ public interface PluginContext extends Plugin {
 
     DiscordWebhookService getDiscordWebhooks();
 
+    DiscordBotService getDiscordBot();
+
     OpeningResultService getOpeningResults();
+
+    PromoCodeService getPromoCodes();
 
     FileConfiguration getConfig();
 

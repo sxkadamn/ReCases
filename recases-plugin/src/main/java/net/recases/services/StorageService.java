@@ -9,11 +9,13 @@ public class StorageService implements AutoCloseable {
 
     private final JavaPlugin plugin;
     private final KeyCache cache;
+    private final RedisSyncService redisSyncService;
     private KeysSerialization keys;
 
-    public StorageService(JavaPlugin plugin, KeyCache cache) {
+    public StorageService(JavaPlugin plugin, KeyCache cache, RedisSyncService redisSyncService) {
         this.plugin = plugin;
         this.cache = cache;
+        this.redisSyncService = redisSyncService;
     }
 
     public void reload() {
@@ -21,7 +23,7 @@ public class StorageService implements AutoCloseable {
         if (keys != null) {
             keys.close();
         }
-        keys = new KeysSerialization(plugin, cache);
+        keys = new KeysSerialization(plugin, cache, redisSyncService);
     }
 
     public int getCaseAmount(OfflinePlayer player, String caseName) {

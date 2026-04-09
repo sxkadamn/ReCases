@@ -5,10 +5,16 @@ api-version: '1.20'
 softdepend:
   - PlaceholderAPI
   - WorldEdit
+  - ItemsAdder
+  - Oraxen
+  - Nexo
+  - MMOItems
+  - floodgate
+  - Geyser-Spigot
 commands:
   cases:
     description: Управление кейсами, ключами и состоянием плагина
-    usage: /cases <help|list|instances|keys|give|take|setamount|set|reload|top|edit|preset|testanim|simulate|audit>
+    usage: /cases <help|list|instances|keys|give|take|setamount|set|reload|top|edit|preset|testanim|simulate|audit|history|rollback|restore|promocode|redeem>
 permissions:
   recases.admin:
     default: op
