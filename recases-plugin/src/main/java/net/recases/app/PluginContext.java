@@ -7,6 +7,7 @@ import net.recases.services.AnimationService;
 import net.recases.services.BedrockSupportService;
 import net.recases.services.CaseService;
 import net.recases.services.DiscordBotService;
+import net.recases.services.ConfigService;
 import net.recases.services.RedisSyncService;
 import net.recases.services.ItemFactory;
 import net.recases.services.MessageService;
@@ -37,6 +38,8 @@ public interface PluginContext extends Plugin {
     SchematicService getSchematics();
 
     MessageService getMessages();
+
+    ConfigService getConfigs();
 
     RewardService getRewardService();
 

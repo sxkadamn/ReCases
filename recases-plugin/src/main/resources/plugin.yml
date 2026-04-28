@@ -14,7 +14,7 @@ softdepend:
 commands:
   cases:
     description: Управление кейсами, ключами и состоянием плагина
-    usage: /cases <help|list|instances|keys|give|take|setamount|set|reload|top|edit|preset|testanim|simulate|audit|history|rollback|restore|promocode|redeem>
+    usage: /cases <help|list|instances|keys|give|take|setamount|set|reload|top|edit|preset|testanim|simulate|audit|history|rollback|restore|promocode|redeem|doctor>
 permissions:
   recases.admin:
     default: op

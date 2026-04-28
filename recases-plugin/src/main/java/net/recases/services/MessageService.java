@@ -36,9 +36,6 @@ public class MessageService {
 
     public String get(String path, String fallback) {
         String value = messagesConfig.getString(path);
-        if (value == null) {
-            value = plugin.getConfig().getString(path, fallback);
-        }
         return textFormatter.colorize(value == null ? fallback : value);
     }
 
@@ -56,9 +53,6 @@ public class MessageService {
 
     public List<String> getList(String path, List<String> fallback) {
         List<String> lines = messagesConfig.getStringList(path);
-        if (lines.isEmpty()) {
-            lines = plugin.getConfig().getStringList(path);
-        }
         List<String> source = lines.isEmpty() ? fallback : lines;
         return source.stream()
                 .map(textFormatter::colorize)

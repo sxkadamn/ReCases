@@ -226,8 +226,20 @@ public class ConfigService {
     }
 
     private void validate() {
-        List<String> warnings = new ArrayList<>();
+        List<String> warnings = collectValidationWarnings();
+        if (warnings.isEmpty()) {
+            plugin.getLogger().info("Config validation passed: no issues found.");
+            return;
+        }
 
+        plugin.getLogger().warning("Config validation found " + warnings.size() + " issue(s):");
+        for (String warning : warnings) {
+            plugin.getLogger().warning(" - " + warning);
+        }
+    }
+
+    public List<String> collectValidationWarnings() {
+        List<String> warnings = new ArrayList<>();
         validateAnimationSettings(warnings);
 
         ConfigurationSection profiles = plugin.getConfig().getConfigurationSection("profiles");
@@ -387,15 +399,7 @@ public class ConfigService {
             warnings.add("settings.server-id cannot be empty.");
         }
 
-        if (warnings.isEmpty()) {
-            plugin.getLogger().info("Config validation passed: no issues found.");
-            return;
-        }
-
-        plugin.getLogger().warning("Config validation found " + warnings.size() + " issue(s):");
-        for (String warning : warnings) {
-            plugin.getLogger().warning(" - " + warning);
-        }
+        return warnings;
     }
 
     private void migrateRewardActions() {
