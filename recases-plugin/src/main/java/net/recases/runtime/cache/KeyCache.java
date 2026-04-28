@@ -7,24 +7,41 @@ import java.util.function.IntUnaryOperator;
 
 public class KeyCache {
 
-    private final Map<UUID, Map<String, Integer>> cachedKeyAmounts = new ConcurrentHashMap<>();
+    private final Map<UUID, Map<String, CachedAmount>> cachedKeyAmounts = new ConcurrentHashMap<>();
 
     public Integer getKeyAmount(UUID playerId, String caseName) {
-        Map<String, Integer> playerCache = cachedKeyAmounts.get(playerId);
+        Map<String, CachedAmount> playerCache = cachedKeyAmounts.get(playerId);
         if (playerCache == null) {
             return null;
         }
-        return playerCache.get(normalizeCaseName(caseName));
+        CachedAmount cachedAmount = playerCache.get(normalizeCaseName(caseName));
+        return cachedAmount == null ? null : cachedAmount.amount;
+    }
+
+    public Integer getKeyAmount(UUID playerId, String caseName, long maxAgeMillis) {
+        Map<String, CachedAmount> playerCache = cachedKeyAmounts.get(playerId);
+        if (playerCache == null) {
+            return null;
+        }
+
+        CachedAmount cachedAmount = playerCache.get(normalizeCaseName(caseName));
+        if (cachedAmount == null) {
+            return null;
+        }
+        if (maxAgeMillis > 0L && System.currentTimeMillis() - cachedAmount.updatedAt > maxAgeMillis) {
+            return null;
+        }
+        return cachedAmount.amount;
     }
 
     public void putKeyAmount(UUID playerId, String caseName, int amount) {
         cachedKeyAmounts
                 .computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
-                .put(normalizeCaseName(caseName), Math.max(0, amount));
+                .put(normalizeCaseName(caseName), new CachedAmount(Math.max(0, amount), System.currentTimeMillis()));
     }
 
     public void invalidateKeyAmount(UUID playerId, String caseName) {
-        Map<String, Integer> playerCache = cachedKeyAmounts.get(playerId);
+        Map<String, CachedAmount> playerCache = cachedKeyAmounts.get(playerId);
         if (playerCache == null) {
             return;
         }
@@ -36,9 +53,13 @@ public class KeyCache {
     }
 
     public int updateKeyAmount(UUID playerId, String caseName, int fallback, IntUnaryOperator updater) {
-        return cachedKeyAmounts
+        CachedAmount updated = cachedKeyAmounts
                 .computeIfAbsent(playerId, ignored -> new ConcurrentHashMap<>())
-                .compute(normalizeCaseName(caseName), (key, current) -> Math.max(0, updater.applyAsInt(current == null ? fallback : current)));
+                .compute(normalizeCaseName(caseName), (key, current) -> new CachedAmount(
+                        Math.max(0, updater.applyAsInt(current == null ? fallback : current.amount)),
+                        System.currentTimeMillis()
+                ));
+        return updated.amount;
     }
 
     public void clear() {
@@ -47,6 +68,16 @@ public class KeyCache {
 
     private String normalizeCaseName(String caseName) {
         return caseName.toLowerCase();
+    }
+
+    private static final class CachedAmount {
+        private final int amount;
+        private final long updatedAt;
+
+        private CachedAmount(int amount, long updatedAt) {
+            this.amount = amount;
+            this.updatedAt = updatedAt;
+        }
     }
 }
 

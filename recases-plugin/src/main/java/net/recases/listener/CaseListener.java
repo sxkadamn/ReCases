@@ -4,6 +4,7 @@ import net.recases.animations.opening.AbstractEntityOpeningAnimation;
 import net.recases.animations.opening.AnchorRiseOpeningAnimation;
 import net.recases.animations.opening.RainlyOpeningAnimation;
 import net.recases.animations.opening.SwordsOpeningAnimation;
+import net.recases.animations.opening.ItemDisplayRollOpeningAnimation;
 import net.recases.animations.opening.WheelOpeningAnimation;
 import net.recases.app.PluginContext;
 import net.recases.gui.create.CasesGUI;
@@ -79,7 +80,8 @@ public class CaseListener implements Listener {
                 && !entity.hasMetadata(WheelOpeningAnimation.WHEEL_ENTITY_METADATA)
                 && !entity.hasMetadata(SwordsOpeningAnimation.SWORDS_DECOR_METADATA)
                 && !entity.hasMetadata(AnchorRiseOpeningAnimation.ANCHOR_RISE_METADATA)
-                && !entity.hasMetadata(RainlyOpeningAnimation.RAINLY_METADATA)) {
+                && !entity.hasMetadata(RainlyOpeningAnimation.RAINLY_METADATA)
+                && !entity.hasMetadata(ItemDisplayRollOpeningAnimation.ITEMDISPLAY_ROLL_METADATA)) {
             return;
         }
 
@@ -95,7 +97,8 @@ public class CaseListener implements Listener {
                 || event.getEntity().hasMetadata(WheelOpeningAnimation.WHEEL_ENTITY_METADATA)
                 || event.getEntity().hasMetadata(SwordsOpeningAnimation.SWORDS_DECOR_METADATA)
                 || event.getEntity().hasMetadata(AnchorRiseOpeningAnimation.ANCHOR_RISE_METADATA)
-                || event.getEntity().hasMetadata(RainlyOpeningAnimation.RAINLY_METADATA)) {
+                || event.getEntity().hasMetadata(RainlyOpeningAnimation.RAINLY_METADATA)
+                || event.getEntity().hasMetadata(ItemDisplayRollOpeningAnimation.ITEMDISPLAY_ROLL_METADATA)) {
             event.setCancelled(true);
         }
     }
@@ -108,7 +111,8 @@ public class CaseListener implements Listener {
                 || event.getRightClicked().hasMetadata(WheelOpeningAnimation.WHEEL_ENTITY_METADATA)
                 || event.getRightClicked().hasMetadata(SwordsOpeningAnimation.SWORDS_DECOR_METADATA)
                 || event.getRightClicked().hasMetadata(AnchorRiseOpeningAnimation.ANCHOR_RISE_METADATA)
-                || event.getRightClicked().hasMetadata(RainlyOpeningAnimation.RAINLY_METADATA)) {
+                || event.getRightClicked().hasMetadata(RainlyOpeningAnimation.RAINLY_METADATA)
+                || event.getRightClicked().hasMetadata(ItemDisplayRollOpeningAnimation.ITEMDISPLAY_ROLL_METADATA)) {
             event.setCancelled(true);
         }
     }

@@ -9,6 +9,7 @@ import net.recases.internal.api.InternalOpeningAnimationContext;
 import net.recases.animations.opening.AnchorRiseOpeningAnimation;
 import net.recases.animations.opening.CircleOpeningAnimation;
 import net.recases.animations.opening.ClassicOpeningAnimation;
+import net.recases.animations.opening.ItemDisplayRollOpeningAnimation;
 import net.recases.animations.opening.MeteorDropOpeningAnimation;
 import net.recases.animations.opening.NeuralOpeningAnimation;
 import net.recases.animations.opening.RainlyOpeningAnimation;
@@ -44,6 +45,7 @@ public class AnimationService implements OpeningAnimationRegistry {
     public static final String SWORDS = "swords";
     public static final String ANCHOR_RISE = "anchor-rise";
     public static final String RAINLY = "rainly";
+    public static final String ITEMDISPLAY_ROLL = "itemdisplay-roll";
     private static final int CLASSIC_SELECTIONS = 4;
     private static final int CIRCLE_SELECTIONS = 6;
     private static final int METEOR_DROP_SELECTIONS = 4;
@@ -169,6 +171,7 @@ public class AnimationService implements OpeningAnimationRegistry {
         registerBuiltIn(SWORDS, "Swords", SWORDS_SELECTIONS, context -> new SwordsOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(ANCHOR_RISE, "Anchor Rise", 1, context -> new AnchorRiseOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
         registerBuiltIn(RAINLY, "Rainly", 1, context -> new RainlyOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
+        registerBuiltIn(ITEMDISPLAY_ROLL, "ItemDisplay Roll", 0, context -> new ItemDisplayRollOpeningAnimation(pluginContext(context), context.getPlayer(), runtime(context)));
     }
 
     private void registerBuiltIn(String id, String displayName, int requiredSelections, OpeningAnimationFactory factory) {

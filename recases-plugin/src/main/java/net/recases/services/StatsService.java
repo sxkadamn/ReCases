@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -34,23 +35,27 @@ public class StatsService implements AutoCloseable {
     private final File file;
     private final Map<UUID, PlayerStatsRecord> records = new LinkedHashMap<>();
     private final Map<String, List<LeaderboardEntry>> leaderboardCache = new LinkedHashMap<>();
+    private final Map<UUID, Long> remoteRefreshTimes = new ConcurrentHashMap<>();
     private final ExecutorService writer = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "recases-stats-writer");
         thread.setDaemon(true);
         return thread;
     });
     private final ZoneId statsZone = ZoneId.systemDefault();
+    private final long remoteCacheTtlMillis;
     private MySqlStatsStorage mySqlStorage;
 
     public StatsService(PluginContext plugin) {
         this.plugin = plugin;
         this.file = new File(plugin.getDataFolder(), "stats.yml");
+        this.remoteCacheTtlMillis = Math.max(0L, plugin.getConfig().getLong("settings.stats.remote-cache-ttl-millis", 2000L));
     }
 
     public synchronized void reload() {
         configureBackend();
         records.clear();
         leaderboardCache.clear();
+        remoteRefreshTimes.clear();
         if (mySqlStorage != null) {
             records.putAll(mySqlStorage.loadAll());
             records.values().forEach(this::normalizeDaily);
@@ -89,6 +94,7 @@ public class StatsService implements AutoCloseable {
         }
 
         invalidateCaches();
+        remoteRefreshTimes.put(player.getUniqueId(), System.currentTimeMillis());
 
         if (mySqlStorage != null) {
             mySqlStorage.recordOpening(player, profileId, reward, guaranteed);
@@ -296,6 +302,7 @@ public class StatsService implements AutoCloseable {
 
         records.put(playerId, rebuilt);
         invalidateCaches();
+        remoteRefreshTimes.put(playerId, System.currentTimeMillis());
         persistRebuiltStats(playerId, rebuilt);
     }
 
@@ -306,6 +313,20 @@ public class StatsService implements AutoCloseable {
 
         records.remove(playerId);
         invalidateCaches();
+        remoteRefreshTimes.remove(playerId);
+    }
+
+    public synchronized void invalidateRemoteCaches() {
+        remoteRefreshTimes.clear();
+        leaderboardCache.clear();
+    }
+
+    public synchronized void invalidateRemotePlayer(UUID playerId) {
+        if (playerId == null) {
+            return;
+        }
+        remoteRefreshTimes.remove(playerId);
+        leaderboardCache.clear();
     }
 
     @Override
@@ -499,8 +520,12 @@ public class StatsService implements AutoCloseable {
         if (mySqlStorage == null || player == null) {
             return;
         }
+        if (isRemoteRecordFresh(player.getUniqueId())) {
+            return;
+        }
 
         PlayerStatsRecord remote = mySqlStorage.loadPlayer(player.getUniqueId());
+        remoteRefreshTimes.put(player.getUniqueId(), System.currentTimeMillis());
         if (remote == null) {
             records.remove(player.getUniqueId());
             return;
@@ -511,6 +536,14 @@ public class StatsService implements AutoCloseable {
         }
         normalizeDaily(remote);
         records.put(player.getUniqueId(), remote);
+    }
+
+    private boolean isRemoteRecordFresh(UUID playerId) {
+        if (playerId == null) {
+            return true;
+        }
+        Long refreshedAt = remoteRefreshTimes.get(playerId);
+        return refreshedAt != null && System.currentTimeMillis() - refreshedAt <= remoteCacheTtlMillis;
     }
 
     private String safe(String value) {

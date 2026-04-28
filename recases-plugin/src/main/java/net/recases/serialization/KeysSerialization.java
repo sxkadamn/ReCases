@@ -20,6 +20,7 @@ public class KeysSerialization implements AutoCloseable {
     private final RedisSyncService redisSyncService;
     private final File legacyYamlFile;
     private final boolean sharedStorageEnabled;
+    private final long sharedCacheTtlMillis;
     private final ExecutorService writer = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "recases-keys-writer");
         thread.setDaemon(true);
@@ -34,6 +35,7 @@ public class KeysSerialization implements AutoCloseable {
         this.sharedStorageEnabled = "mysql".equalsIgnoreCase(plugin.getConfig().getString("settings.storage.type", "sqlite"))
                 && (plugin.getConfig().getBoolean("settings.network-sync.enabled", false)
                 || plugin.getConfig().getBoolean("settings.redis.enabled", false));
+        this.sharedCacheTtlMillis = Math.max(0L, plugin.getConfig().getLong("settings.storage.shared-cache-ttl-millis", 2000L));
         this.storage = createStorage(plugin.getConfig());
         this.storage.initialize();
         migrateLegacyYamlIfNeeded(plugin.getConfig());
@@ -61,9 +63,10 @@ public class KeysSerialization implements AutoCloseable {
         PlayerKey playerKey = PlayerKey.from(player);
         String normalizedCaseName = normalizeCaseName(caseName);
         if (sharedStorageEnabled && !isRedisCacheEnabled()) {
-            int amount = storage.getCaseAmount(playerKey, normalizedCaseName);
-            cache.putKeyAmount(playerKey.getUniqueId(), normalizedCaseName, amount);
-            return amount;
+            Integer cached = cache.getKeyAmount(playerKey.getUniqueId(), normalizedCaseName, sharedCacheTtlMillis);
+            if (cached != null) {
+                return cached;
+            }
         }
 
         Integer cached = cache.getKeyAmount(playerKey.getUniqueId(), normalizedCaseName);

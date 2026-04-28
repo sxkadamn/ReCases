@@ -595,6 +595,35 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
             }
         }
 
+        if (plugin != null) {
+            final OfflinePlayer historyTarget = target;
+            final int historyLimit = limit;
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                List<RewardAuditService.AuditEntry> entries = plugin.getRewardAudit().getRecentEntries(historyTarget == null ? null : historyTarget.getUniqueId(), historyLimit);
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (entries.isEmpty()) {
+                        messages.send(sender, "messages.top-empty", "РСЃС‚РѕСЂРёСЏ РѕС‚РєСЂС‹С‚РёР№ РїРѕРєР° РїСѓСЃС‚Р°.");
+                        return;
+                    }
+
+                    messages.send(sender, "messages.history-header", "#74c0fcРСЃС‚РѕСЂРёСЏ РѕС‚РєСЂС‹С‚РёР№ (%count%)", "%count%", String.valueOf(entries.size()));
+                    for (RewardAuditService.AuditEntry entry : entries) {
+                        String state = entry.isRolledBack() ? "rolled-back" : entry.isRestored() ? "restored" : "active";
+                        messages.send(sender,
+                                "messages.history-line",
+                                "#a8dadc[%time%] #ffffff%player% #ffd166-> %reward% #a8dadccase=%case% state=%state% tx=%tx%",
+                                "%time%", AUDIT_TIME_FORMAT.format(Instant.ofEpochMilli(entry.getCreatedAt())),
+                                "%player%", entry.getPlayerName(),
+                                "%reward%", entry.getRewardName(),
+                                "%case%", entry.getCaseProfile(),
+                                "%state%", state,
+                                "%tx%", shortTransaction(entry.getTransactionId()));
+                    }
+                });
+            });
+            return true;
+        }
+
         List<RewardAuditService.AuditEntry> entries = plugin.getRewardAudit().getRecentEntries(target == null ? null : target.getUniqueId(), limit);
         if (entries.isEmpty()) {
             messages.send(sender, "messages.top-empty", "История открытий пока пуста.");
@@ -633,6 +662,36 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
 
         if (args.length >= 3) {
             limit = parsePositiveInt(args[2], limit);
+        }
+
+        if (plugin != null) {
+            final OfflinePlayer auditTarget = target;
+            final int auditLimit = limit;
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                List<RewardAuditService.AuditEntry> entries = plugin.getRewardAudit().getRecentEntries(auditTarget == null ? null : auditTarget.getUniqueId(), auditLimit);
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (entries.isEmpty()) {
+                        messages.send(sender, "messages.top-empty", "No audit data yet.");
+                        return;
+                    }
+
+                    messages.send(sender, "messages.audit-header", "#74c0fcReward audit (%count%)", "%count%", String.valueOf(entries.size()));
+                    for (RewardAuditService.AuditEntry entry : entries) {
+                        messages.send(sender,
+                                "messages.audit-line",
+                                "#a8dadc[%time%] #ffffff%player% #ffd166-> %reward% #a8dadccase=%case% pity=%pity% tx=%tx% server=%server%",
+                                "%time%", AUDIT_TIME_FORMAT.format(Instant.ofEpochMilli(entry.getCreatedAt())),
+                                "%player%", entry.getPlayerName(),
+                                "%reward%", entry.getRewardName(),
+                                "%case%", entry.getCaseProfile(),
+                                "%pity%", String.valueOf(entry.getPityBefore()),
+                                "%tx%", shortTransaction(entry.getTransactionId()),
+                                "%server%", entry.getServerId().isEmpty() ? "default" : entry.getServerId()
+                        );
+                    }
+                });
+            });
+            return true;
         }
 
         List<RewardAuditService.AuditEntry> entries = plugin.getRewardAudit().getRecentEntries(target == null ? null : target.getUniqueId(), limit);
@@ -694,6 +753,30 @@ public class CaseCommands implements CommandExecutor, TabCompleter {
 
         switch (args[1].toLowerCase(Locale.ROOT)) {
             case "list":
+                if (plugin != null) {
+                    Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                        List<PromoCodeService.PromoCodeEntry> entries = plugin.getPromoCodes().listCodes(20);
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (entries.isEmpty()) {
+                                messages.send(sender, "messages.promocode-empty", "#ff6b6bРџСЂРѕРјРѕРєРѕРґС‹ РЅРµ РЅР°Р№РґРµРЅС‹.");
+                                return;
+                            }
+                            messages.send(sender, "messages.promocode-header", "#74c0fcРџСЂРѕРјРѕРєРѕРґС‹ (%count%)", "%count%", String.valueOf(entries.size()));
+                            for (PromoCodeService.PromoCodeEntry entry : entries) {
+                                messages.send(sender,
+                                        "messages.promocode-line",
+                                        "#a8dadc%code% #ffffffprofile=%profile% amount=%amount% uses=%used%/%max%",
+                                        "%code%", entry.code(),
+                                        "%profile%", entry.profileId(),
+                                        "%amount%", String.valueOf(entry.amount()),
+                                        "%used%", String.valueOf(entry.usedCount()),
+                                        "%max%", String.valueOf(entry.maxUses()));
+                            }
+                        });
+                    });
+                    return true;
+                }
+
                 List<PromoCodeService.PromoCodeEntry> entries = plugin.getPromoCodes().listCodes(20);
                 if (entries.isEmpty()) {
                     messages.send(sender, "messages.promocode-empty", "#ff6b6bПромокоды не найдены.");

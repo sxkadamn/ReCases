@@ -5,6 +5,14 @@ config-version: 13
 settings:
   # Уникальный id сервера для аудита и вебхуков, если несколько серверов используют одну базу
   server-id: default
+  audit:
+    cleanup-interval-minutes: 30
+    retention-days: 90
+    pending-retention-hours: 168
+  stats:
+    remote-cache-ttl-millis: 2000
+  storage:
+    shared-cache-ttl-millis: 2000
   redis:
     # Включить Redis pub/sub для инвалидации кэша и распределённых блокировок открытий в мультисерверной сети
     enabled: false
@@ -212,6 +220,81 @@ settings:
       reward-change-interval: 4
       reveal-ticks: 30
       end-ticks: 70
+    item-display-roll:
+      preset: cinematic
+      scroll-steps: 44
+      total-ticks: 96
+      reveal-ticks: 38
+      easing-power: 4.15
+      item-scale: 1.36
+      reveal-scale: 2.16
+      zoom-distance: 0.60
+      shake-amplitude: 0.03
+      shake-ticks: 10
+      base-tilt-degrees: 8.0
+      reveal-tilt-degrees: 2.5
+      spin-per-tick: 8.8
+      reveal-settle-spin: 2.4
+      motion:
+        bob-amplitude: 0.024
+        bob-frequency: 0.16
+        drift-amplitude: 0.012
+        idle-pulse-amplitude: 0.022
+        tilt-swing-amplitude: 1.6
+        reveal-lift: 0.16
+        reveal-pulse-amplitude: 0.09
+        reveal-zoom-punch: 0.24
+      view-range: 0.72
+      panel-width: 296
+      panel-background: '#E00B1118'
+      accent-background: '#A6E8D7B1'
+      status-background: '#CF0B1118'
+      name-background: '#DB0B1118'
+      accent-label: '#f8f1df&lКЕЙС: %case%'
+      position:
+        mode: smooth-follow
+        distance: 2.15
+        height-offset: -0.18
+        smooth-factor: 0.18
+      texts:
+        rolling: '#f8f1df&lПРОКРУТКА НАГРАД'
+        name: '%reward%'
+        reveal-common: '#f8f1df&lВАШ ПРИЗ'
+        reveal-rare: '#ffd78a&lРЕДКИЙ ПРИЗ'
+        reveal-guaranteed: '#ffe8a3&lГАРАНТ!'
+      sounds:
+        start: BLOCK_ENDER_CHEST_OPEN
+        tick-fast: UI_BUTTON_CLICK
+        tick-slow: BLOCK_NOTE_BLOCK_CHIME
+        stop: BLOCK_AMETHYST_CLUSTER_BREAK
+        win-common: ENTITY_PLAYER_LEVELUP
+        win-rare: UI_TOAST_CHALLENGE_COMPLETE
+        win-guaranteed: ITEM_TOTEM_USE
+      particles:
+        rolling: ENCHANT
+        common: END_ROD
+        rare: DRAGON_BREATH
+        guaranteed: TOTEM_OF_UNDYING
+      particle-counts:
+        rolling: 5
+        reveal: 20
+      presets:
+        cinematic:
+          panel-background: '#E00B1118'
+          accent-background: '#A6E8D7B1'
+          status-background: '#CF0B1118'
+          name-background: '#DB0B1118'
+          accent-label: '#f8f1df&lКЕЙС: %case%'
+          particles:
+            rolling: ENCHANT
+            common: END_ROD
+            rare: DRAGON_BREATH
+            guaranteed: TOTEM_OF_UNDYING
+          texts:
+            rolling: '#f8f1df&lПРОКРУТКА НАГРАД'
+            reveal-common: '#f8f1df&lВАШ ПРИЗ'
+            reveal-rare: '#ffd78a&lРЕДКИЙ ПРИЗ'
+            reveal-guaranteed: '#ffe8a3&lГАРАНТ!'
   storage:
     # sqlite - локальная база в папке плагина
     # mysql - внешняя MySQL база
@@ -283,6 +366,8 @@ settings:
     sync-keys: true
     # Подтягивать статистику и pity между несколькими серверами
     sync-stats: true
+    polling-fallback-enabled: true
+    polling-fallback-interval-seconds: 120
   presets:
     # Папка внутри plugins/ReCases для экспортов/импортов пресетов
     folder: presets
@@ -383,7 +468,12 @@ cases:
       # Анимация именно для этой физической точки
       # Если оставить пусто, плагин возьмёт анимацию из profile
       # Доступно: classic, circle, meteor-drop, void-rift, wheel, sphere, swords, anchor-rise, rainly, neural
-      animation: classic
+      animation: itemdisplay-roll
+      animations:
+        item-display-roll:
+          preset: cinematic
+          position:
+            mode: smooth-follow
       location:
         world: world
         x: 232.0
@@ -401,7 +491,10 @@ profiles:
   donate:
     # Анимация для этого профиля кейса.
     # Доступно: classic, circle, meteor-drop, void-rift, wheel, sphere, swords, anchor-rise, rainly, neural
-    animation: classic
+    animation: itemdisplay-roll
+    animations:
+      item-display-roll:
+        preset: cinematic
     # Условия доступа к профилю. Все строки должны пройти проверку.
     # Примеры:
     # - permission;recases.profile.donate

@@ -34,6 +34,7 @@ public class LeaderboardHologramService implements AutoCloseable {
     private final Map<String, LeaderboardHologram> hologramsById = new LinkedHashMap<>();
     private BukkitTask updateTask;
     private BukkitTask queuedRefreshTask;
+    private volatile boolean refreshInFlight;
 
     public LeaderboardHologramService(PluginContext plugin, TextFormatter textFormatter) {
         this.plugin = plugin;
@@ -70,18 +71,34 @@ public class LeaderboardHologramService implements AutoCloseable {
         if (holograms.isEmpty()) {
             return;
         }
+        if (refreshInFlight) {
+            return;
+        }
 
         List<LeaderboardHologram> snapshot = new ArrayList<>(holograms);
+        refreshInFlight = true;
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            List<LeaderboardUpdate> updates = snapshot.stream()
-                    .map(LeaderboardHologram::createUpdate)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
-            if (!plugin.isEnabled()) {
-                return;
-            }
+            try {
+                List<LeaderboardUpdate> updates = snapshot.stream()
+                        .map(LeaderboardHologram::createUpdate)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+                if (!plugin.isEnabled()) {
+                    refreshInFlight = false;
+                    return;
+                }
 
-            Bukkit.getScheduler().runTask(plugin, () -> updates.forEach(LeaderboardUpdate::apply));
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    try {
+                        updates.forEach(LeaderboardUpdate::apply);
+                    } finally {
+                        refreshInFlight = false;
+                    }
+                });
+            } catch (RuntimeException exception) {
+                refreshInFlight = false;
+                throw exception;
+            }
         });
     }
 
@@ -93,10 +110,11 @@ public class LeaderboardHologramService implements AutoCloseable {
             return;
         }
 
+        long debounceTicks = Math.max(1L, plugin.getConfig().getLong("leaderboards.refresh-debounce-ticks", 20L));
         queuedRefreshTask = Bukkit.getScheduler().runTaskLater(plugin, () -> {
             queuedRefreshTask = null;
             refreshAll();
-        }, 20L);
+        }, debounceTicks);
     }
 
     public boolean handleInteraction(Entity entity, Player player) {
@@ -147,6 +165,7 @@ public class LeaderboardHologramService implements AutoCloseable {
             queuedRefreshTask.cancel();
             queuedRefreshTask = null;
         }
+        refreshInFlight = false;
 
         for (LeaderboardHologram hologram : holograms) {
             hologram.remove();

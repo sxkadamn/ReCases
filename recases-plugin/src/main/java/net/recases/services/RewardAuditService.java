@@ -8,6 +8,7 @@ import net.recases.runtime.CaseRuntime;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
 import java.sql.Connection;
@@ -21,18 +22,22 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public class RewardAuditService implements AutoCloseable {
 
     private final PluginContext plugin;
+    private BukkitTask cleanupTask;
 
     public RewardAuditService(PluginContext plugin) {
         this.plugin = plugin;
     }
 
     public void reload() {
+        close();
         initialize();
         recoverPendingOpenings();
+        scheduleCleanup();
     }
 
     public void initialize() {
@@ -55,6 +60,8 @@ public class RewardAuditService implements AutoCloseable {
             ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN rollback_actor VARCHAR(96) NOT NULL DEFAULT ''");
             ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN restore_actor VARCHAR(96) NOT NULL DEFAULT ''");
             ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN updated_at BIGINT NOT NULL DEFAULT 0");
+            ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN reward_actions TEXT NOT NULL DEFAULT ''");
+            ensureColumn(connection, "recases_reward_audit", "ALTER TABLE recases_reward_audit ADD COLUMN rollback_actions TEXT NOT NULL DEFAULT ''");
 
             ensureColumn(connection, "recases_pending_openings", "ALTER TABLE recases_pending_openings ADD COLUMN transaction_id VARCHAR(36) NOT NULL DEFAULT ''");
             ensureColumn(connection, "recases_pending_openings", "ALTER TABLE recases_pending_openings ADD COLUMN reward_id VARCHAR(96) NOT NULL DEFAULT ''");
@@ -62,6 +69,8 @@ public class RewardAuditService implements AutoCloseable {
             ensureColumn(connection, "recases_pending_openings", "ALTER TABLE recases_pending_openings ADD COLUMN server_id VARCHAR(64) NOT NULL DEFAULT ''");
             ensureColumn(connection, "recases_pending_openings", "ALTER TABLE recases_pending_openings ADD COLUMN started_at BIGINT NOT NULL DEFAULT 0");
             ensureColumn(connection, "recases_pending_openings", "ALTER TABLE recases_pending_openings ADD COLUMN updated_at BIGINT NOT NULL DEFAULT 0");
+            ensureColumn(connection, "recases_pending_openings", "ALTER TABLE recases_pending_openings ADD COLUMN reward_actions TEXT NOT NULL DEFAULT ''");
+            ensureColumn(connection, "recases_pending_openings", "ALTER TABLE recases_pending_openings ADD COLUMN rollback_actions TEXT NOT NULL DEFAULT ''");
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to initialize reward audit storage", exception);
         }
@@ -73,10 +82,10 @@ public class RewardAuditService implements AutoCloseable {
         }
 
         String sql = isMysql()
-                ? "INSERT INTO recases_pending_openings (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, server_id, key_consumed, reward_granted, started_at, updated_at) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
-                "ON DUPLICATE KEY UPDATE transaction_id = VALUES(transaction_id), player_name = VALUES(player_name), runtime_id = VALUES(runtime_id), animation_id = VALUES(animation_id), reward_id = VALUES(reward_id), reward_name = VALUES(reward_name), rare_reward = VALUES(rare_reward), guaranteed_reward = VALUES(guaranteed_reward), pity_before = VALUES(pity_before), server_id = VALUES(server_id), updated_at = VALUES(updated_at)"
-                : "INSERT OR REPLACE INTO recases_pending_openings (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, server_id, key_consumed, reward_granted, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                ? "INSERT INTO recases_pending_openings (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, server_id, key_consumed, reward_granted, started_at, updated_at, reward_actions, rollback_actions) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                "ON DUPLICATE KEY UPDATE transaction_id = VALUES(transaction_id), player_name = VALUES(player_name), runtime_id = VALUES(runtime_id), animation_id = VALUES(animation_id), reward_id = VALUES(reward_id), reward_name = VALUES(reward_name), rare_reward = VALUES(rare_reward), guaranteed_reward = VALUES(guaranteed_reward), pity_before = VALUES(pity_before), server_id = VALUES(server_id), updated_at = VALUES(updated_at), reward_actions = VALUES(reward_actions), rollback_actions = VALUES(rollback_actions)"
+                : "INSERT OR REPLACE INTO recases_pending_openings (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, server_id, key_consumed, reward_granted, started_at, updated_at, reward_actions, rollback_actions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -108,8 +117,8 @@ public class RewardAuditService implements AutoCloseable {
         }
 
         String sql = isMysql()
-                ? "INSERT IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                : "INSERT OR IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                ? "INSERT IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at, reward_actions, rollback_actions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                : "INSERT OR IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at, reward_actions, rollback_actions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -122,7 +131,7 @@ public class RewardAuditService implements AutoCloseable {
 
     public List<AuditEntry> getRecentEntries(UUID playerId, int limit) {
         int normalizedLimit = Math.max(1, Math.min(limit, 50));
-        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at " +
+        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at, reward_actions, rollback_actions " +
                 "FROM recases_reward_audit "
                 + (playerId == null ? "" : "WHERE player_id = ? ")
                 + "ORDER BY created_at DESC LIMIT ?";
@@ -147,6 +156,7 @@ public class RewardAuditService implements AutoCloseable {
     }
 
     public MutationResult rollbackEntry(String identifier, String actorName) {
+        if (System.nanoTime() == Long.MIN_VALUE) {
         LookupResult lookup = resolveEntry(identifier);
         if (lookup.ambiguous) {
             return MutationResult.failed("Идентификатор неоднозначен. Укажите более длинный tx/opening id.");
@@ -165,7 +175,7 @@ public class RewardAuditService implements AutoCloseable {
             return MutationResult.failed("Для rollback игрок должен быть онлайн.");
         }
 
-        CaseItem reward = plugin.getCaseService().getReward(entry.getCaseProfile(), entry.getRewardId());
+        CaseItem reward = resolveRewardSnapshot(entry);
         if (reward == null) {
             return MutationResult.failed("Награда для этой записи больше не существует.");
         }
@@ -189,9 +199,12 @@ public class RewardAuditService implements AutoCloseable {
         plugin.getLeaderboardHolograms().requestRefresh();
         plugin.getTriggerService().fireConfigured("reward-rollback", context, profile, reward);
         return MutationResult.success("Rollback выполнен.", entry);
+        }
+        return mutateEntry(identifier, actorName, true);
     }
 
     public MutationResult restoreEntry(String identifier, String actorName) {
+        if (System.nanoTime() == Long.MIN_VALUE) {
         LookupResult lookup = resolveEntry(identifier);
         if (lookup.ambiguous) {
             return MutationResult.failed("Идентификатор неоднозначен. Укажите более длинный tx/opening id.");
@@ -210,7 +223,7 @@ public class RewardAuditService implements AutoCloseable {
             return MutationResult.failed("Для restore игрок должен быть онлайн.");
         }
 
-        CaseItem reward = plugin.getCaseService().getReward(entry.getCaseProfile(), entry.getRewardId());
+        CaseItem reward = resolveRewardSnapshot(entry);
         if (reward == null) {
             return MutationResult.failed("Награда для этой записи больше не существует.");
         }
@@ -234,6 +247,89 @@ public class RewardAuditService implements AutoCloseable {
         plugin.getLeaderboardHolograms().requestRefresh();
         plugin.getTriggerService().fireConfigured("reward-restore", context, profile, reward);
         return MutationResult.success("Restore выполнен.", entry);
+        }
+        return mutateEntry(identifier, actorName, false);
+    }
+
+    private MutationResult mutateEntry(String identifier, String actorName, boolean rollback) {
+        LookupResult lookup = resolveEntry(identifier);
+        if (lookup.ambiguous) {
+            return MutationResult.failed("Identifier is ambiguous. Use a longer tx/opening id.");
+        }
+        if (lookup.entry == null) {
+            return MutationResult.failed("Audit entry was not found.");
+        }
+
+        AuditEntry initialEntry = lookup.entry;
+        Player player = Bukkit.getPlayer(initialEntry.getPlayerId());
+        if (player == null || !player.isOnline()) {
+            return MutationResult.failed(rollback
+                    ? "Player must be online for rollback."
+                    : "Player must be online for restore.");
+        }
+
+        try (Connection connection = openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                AuditEntry entry = findEntryForUpdate(connection, initialEntry.getOpeningId());
+                if (entry == null) {
+                    connection.rollback();
+                    return MutationResult.failed("Audit entry was not found.");
+                }
+                if (rollback && entry.isRolledBack()) {
+                    connection.rollback();
+                    return MutationResult.failed("This reward has already been rolled back.");
+                }
+                if (!rollback && !entry.isRolledBack()) {
+                    connection.rollback();
+                    return MutationResult.failed("This reward is not rolled back.");
+                }
+
+                CaseItem reward = resolveRewardSnapshot(entry);
+                if (reward == null) {
+                    connection.rollback();
+                    return MutationResult.failed("Reward definition is missing.");
+                }
+
+                CaseProfile profile = plugin.getCaseService().getProfile(entry.getCaseProfile());
+                CaseExecutionContext context = plugin.getRewardService().createContext(
+                        player,
+                        entry.getCaseProfile(),
+                        entry.getRuntimeId(),
+                        entry.getAnimationId(),
+                        reward,
+                        entry.isGuaranteedReward(),
+                        entry.getPityBefore(),
+                        rollback ? "reward-rollback" : "reward-restore",
+                        false,
+                        rollback
+                );
+
+                if (rollback) {
+                    plugin.getRewardService().rollback(context, reward);
+                    updateAuditState(connection, entry.getOpeningId(), true, false, actorName, entry.getRestoreActor());
+                } else {
+                    plugin.getRewardService().execute(context, reward.getActions());
+                    updateAuditState(connection, entry.getOpeningId(), false, true, entry.getRollbackActor(), actorName);
+                }
+
+                connection.commit();
+                rebuildPlayerStats(entry);
+                plugin.getLeaderboardHolograms().requestRefresh();
+                plugin.getTriggerService().fireConfigured(rollback ? "reward-rollback" : "reward-restore", context, profile, reward);
+                return MutationResult.success(rollback ? "Rollback completed." : "Restore completed.", entry);
+            } catch (RuntimeException | SQLException exception) {
+                connection.rollback();
+                if (exception instanceof SQLException sqlException) {
+                    throw sqlException;
+                }
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            throw new RuntimeException("Failed to mutate reward audit entry", exception);
+        }
     }
 
     public void recoverPendingOpenings() {
@@ -286,7 +382,7 @@ public class RewardAuditService implements AutoCloseable {
     }
 
     private void deliverRecoveredReward(Player player, PendingOpening opening) {
-        CaseItem reward = plugin.getCaseService().getReward(opening.getCaseProfile(), opening.getRewardId());
+        CaseItem reward = resolveRewardSnapshot(opening);
         if (reward == null) {
             refundPendingKey(opening);
             deletePending(opening.getOpeningId());
@@ -323,8 +419,8 @@ public class RewardAuditService implements AutoCloseable {
 
     private boolean recordRecoveredIfAbsent(Player player, PendingOpening opening, CaseItem reward) {
         String sql = isMysql()
-                ? "INSERT IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                : "INSERT OR IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                ? "INSERT IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at, reward_actions, rollback_actions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                : "INSERT OR IGNORE INTO recases_reward_audit (opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at, reward_actions, rollback_actions) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -353,7 +449,7 @@ public class RewardAuditService implements AutoCloseable {
     }
 
     private List<PendingOpening> loadPendingOpenings(UUID playerId) {
-        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, server_id, key_consumed, reward_granted, started_at, updated_at " +
+        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, server_id, key_consumed, reward_granted, started_at, updated_at, reward_actions, rollback_actions " +
                 "FROM recases_pending_openings "
                 + (playerId == null ? "" : "WHERE player_id = ? ")
                 + "ORDER BY started_at ASC";
@@ -384,7 +480,9 @@ public class RewardAuditService implements AutoCloseable {
                             resultSet.getBoolean("key_consumed"),
                             resultSet.getBoolean("reward_granted"),
                             resultSet.getLong("started_at"),
-                            resultSet.getLong("updated_at")
+                            resultSet.getLong("updated_at"),
+                            decodeCommands(resultSet.getString("reward_actions")),
+                            decodeCommands(resultSet.getString("rollback_actions"))
                     ));
                 }
                 return openings;
@@ -440,7 +538,7 @@ public class RewardAuditService implements AutoCloseable {
             return new LookupResult(null, false);
         }
 
-        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at " +
+        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at, reward_actions, rollback_actions " +
                 "FROM recases_reward_audit WHERE opening_id = ? OR transaction_id = ? OR opening_id LIKE ? OR transaction_id LIKE ? ORDER BY created_at DESC LIMIT 2";
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -463,12 +561,27 @@ public class RewardAuditService implements AutoCloseable {
         }
     }
 
+    private AuditEntry findEntryForUpdate(Connection connection, UUID openingId) throws SQLException {
+        if (connection == null || openingId == null) {
+            return null;
+        }
+
+        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at, reward_actions, rollback_actions " +
+                "FROM recases_reward_audit WHERE opening_id = ?" + (isMysql() ? " FOR UPDATE" : "");
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, openingId.toString());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? mapAuditEntry(resultSet) : null;
+            }
+        }
+    }
+
     private List<AuditEntry> loadActiveEntries(UUID playerId) {
         if (playerId == null) {
             return List.of();
         }
 
-        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at " +
+        String sql = "SELECT opening_id, transaction_id, player_id, player_name, case_profile, runtime_id, animation_id, reward_id, reward_name, rare_reward, guaranteed_reward, pity_before, pity_after, server_id, rolled_back, restored, rollback_actor, restore_actor, created_at, updated_at, reward_actions, rollback_actions " +
                 "FROM recases_reward_audit WHERE player_id = ? AND rolled_back = ? ORDER BY created_at ASC";
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -507,6 +620,19 @@ public class RewardAuditService implements AutoCloseable {
         }
     }
 
+    private void updateAuditState(Connection connection, UUID openingId, boolean rolledBack, boolean restored, String rollbackActor, String restoreActor) throws SQLException {
+        String sql = "UPDATE recases_reward_audit SET rolled_back = ?, restored = ?, rollback_actor = ?, restore_actor = ?, updated_at = ? WHERE opening_id = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBoolean(1, rolledBack);
+            statement.setBoolean(2, restored);
+            statement.setString(3, rollbackActor == null ? "" : rollbackActor);
+            statement.setString(4, restoreActor == null ? "" : restoreActor);
+            statement.setLong(5, System.currentTimeMillis());
+            statement.setString(6, openingId.toString());
+            statement.executeUpdate();
+        }
+    }
+
     private void bindPendingStatement(PreparedStatement statement, Player player, CaseRuntime runtime, OpeningSession session,
                                       boolean keyConsumed, boolean rewardGranted, long startedAt, long updatedAt) throws SQLException {
         CaseItem reward = session.getFinalReward();
@@ -527,6 +653,8 @@ public class RewardAuditService implements AutoCloseable {
         statement.setBoolean(15, rewardGranted);
         statement.setLong(16, startedAt);
         statement.setLong(17, updatedAt);
+        statement.setString(18, encodeCommands(reward == null ? List.of() : reward.getActions()));
+        statement.setString(19, encodeCommands(reward == null ? List.of() : reward.getRollbackActions()));
     }
 
     private void bindAuditStatement(PreparedStatement statement, Player player, String runtimeId, String animationId, String caseProfile,
@@ -576,6 +704,8 @@ public class RewardAuditService implements AutoCloseable {
         statement.setString(18, restoreActor == null ? "" : restoreActor);
         statement.setLong(19, timestamp);
         statement.setLong(20, timestamp);
+        statement.setString(21, encodeCommands(reward.getActions()));
+        statement.setString(22, encodeCommands(reward.getRollbackActions()));
     }
 
     private AuditEntry mapAuditEntry(ResultSet resultSet) throws SQLException {
@@ -599,7 +729,9 @@ public class RewardAuditService implements AutoCloseable {
                 resultSet.getString("rollback_actor"),
                 resultSet.getString("restore_actor"),
                 resultSet.getLong("created_at"),
-                resultSet.getLong("updated_at")
+                resultSet.getLong("updated_at"),
+                decodeCommands(resultSet.getString("reward_actions")),
+                decodeCommands(resultSet.getString("rollback_actions"))
         );
     }
 
@@ -646,7 +778,9 @@ public class RewardAuditService implements AutoCloseable {
                     "rollback_actor VARCHAR(96) NOT NULL DEFAULT ''," +
                     "restore_actor VARCHAR(96) NOT NULL DEFAULT ''," +
                     "created_at BIGINT NOT NULL," +
-                    "updated_at BIGINT NOT NULL" +
+                    "updated_at BIGINT NOT NULL," +
+                    "reward_actions TEXT NOT NULL," +
+                    "rollback_actions TEXT NOT NULL" +
                     ")";
         }
 
@@ -670,7 +804,9 @@ public class RewardAuditService implements AutoCloseable {
                 "rollback_actor TEXT NOT NULL DEFAULT ''," +
                 "restore_actor TEXT NOT NULL DEFAULT ''," +
                 "created_at INTEGER NOT NULL," +
-                "updated_at INTEGER NOT NULL" +
+                "updated_at INTEGER NOT NULL," +
+                "reward_actions TEXT NOT NULL," +
+                "rollback_actions TEXT NOT NULL" +
                 ")";
     }
 
@@ -693,7 +829,9 @@ public class RewardAuditService implements AutoCloseable {
                     "key_consumed BOOLEAN NOT NULL," +
                     "reward_granted BOOLEAN NOT NULL," +
                     "started_at BIGINT NOT NULL," +
-                    "updated_at BIGINT NOT NULL" +
+                    "updated_at BIGINT NOT NULL," +
+                    "reward_actions TEXT NOT NULL," +
+                    "rollback_actions TEXT NOT NULL" +
                     ")";
         }
 
@@ -714,7 +852,9 @@ public class RewardAuditService implements AutoCloseable {
                 "key_consumed INTEGER NOT NULL," +
                 "reward_granted INTEGER NOT NULL," +
                 "started_at INTEGER NOT NULL," +
-                "updated_at INTEGER NOT NULL" +
+                "updated_at INTEGER NOT NULL," +
+                "reward_actions TEXT NOT NULL," +
+                "rollback_actions TEXT NOT NULL" +
                 ")";
     }
 
@@ -769,8 +909,83 @@ public class RewardAuditService implements AutoCloseable {
                 .toLowerCase(Locale.ROOT);
     }
 
+    private void scheduleCleanup() {
+        long intervalMinutes = Math.max(1L, plugin.getConfig().getLong("settings.audit.cleanup-interval-minutes", 30L));
+        cleanupTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::cleanupExpiredEntries, intervalMinutes * 1200L, intervalMinutes * 1200L);
+    }
+
+    private void cleanupExpiredEntries() {
+        long now = System.currentTimeMillis();
+        long auditRetentionDays = plugin.getConfig().getLong("settings.audit.retention-days", 90L);
+        long pendingRetentionHours = plugin.getConfig().getLong("settings.audit.pending-retention-hours", 168L);
+
+        if (auditRetentionDays > 0) {
+            deleteOlderThan("recases_reward_audit", "updated_at", now - auditRetentionDays * 24L * 60L * 60L * 1000L);
+        }
+        if (pendingRetentionHours > 0) {
+            deleteOlderThan("recases_pending_openings", "updated_at", now - pendingRetentionHours * 60L * 60L * 1000L);
+        }
+    }
+
+    private void deleteOlderThan(String tableName, String timestampColumn, long threshold) {
+        String sql = "DELETE FROM " + tableName + " WHERE " + timestampColumn + " > 0 AND " + timestampColumn + " < ?";
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, threshold);
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            plugin.getLogger().warning("Failed to cleanup " + tableName + ": " + exception.getMessage());
+        }
+    }
+
+    private CaseItem resolveRewardSnapshot(AuditEntry entry) {
+        CaseItem reward = plugin.getCaseService().getReward(entry.getCaseProfile(), entry.getRewardId());
+        if (reward != null) {
+            return reward;
+        }
+        return buildSnapshotReward(entry.getRewardId(), entry.getRewardName(), entry.isRareReward(), entry.getRewardActions(), entry.getRollbackActions());
+    }
+
+    private CaseItem resolveRewardSnapshot(PendingOpening opening) {
+        CaseItem reward = plugin.getCaseService().getReward(opening.getCaseProfile(), opening.getRewardId());
+        if (reward != null) {
+            return reward;
+        }
+        return buildSnapshotReward(opening.getRewardId(), opening.getRewardName(), opening.isRareReward(), opening.getRewardActions(), opening.getRollbackActions());
+    }
+
+    private CaseItem buildSnapshotReward(String rewardId, String rewardName, boolean rareReward, List<String> rewardActions, List<String> rollbackActions) {
+        if ((rewardActions == null || rewardActions.isEmpty()) && (rollbackActions == null || rollbackActions.isEmpty())) {
+            return null;
+        }
+        return new SnapshotCaseItem(rewardId, rewardName, rewardActions, rollbackActions, rareReward);
+    }
+
+    private String encodeCommands(List<String> commands) {
+        if (commands == null || commands.isEmpty()) {
+            return "";
+        }
+        return commands.stream()
+                .filter(command -> command != null && !command.isEmpty())
+                .collect(Collectors.joining("\n"));
+    }
+
+    private List<String> decodeCommands(String commands) {
+        if (commands == null || commands.isEmpty()) {
+            return List.of();
+        }
+        return commands.lines()
+                .map(String::trim)
+                .filter(line -> !line.isEmpty())
+                .toList();
+    }
+
     @Override
     public void close() {
+        if (cleanupTask != null) {
+            cleanupTask.cancel();
+            cleanupTask = null;
+        }
     }
 
     public static final class AuditEntry {
@@ -794,11 +1009,14 @@ public class RewardAuditService implements AutoCloseable {
         private final String restoreActor;
         private final long createdAt;
         private final long updatedAt;
+        private final List<String> rewardActions;
+        private final List<String> rollbackActions;
 
         private AuditEntry(UUID openingId, UUID transactionId, UUID playerId, String playerName, String caseProfile, String runtimeId,
                            String animationId, String rewardId, String rewardName, boolean rareReward, boolean guaranteedReward,
                            int pityBefore, int pityAfter, String serverId, boolean rolledBack, boolean restored,
-                           String rollbackActor, String restoreActor, long createdAt, long updatedAt) {
+                           String rollbackActor, String restoreActor, long createdAt, long updatedAt,
+                           List<String> rewardActions, List<String> rollbackActions) {
             this.openingId = openingId;
             this.transactionId = transactionId;
             this.playerId = playerId;
@@ -819,6 +1037,8 @@ public class RewardAuditService implements AutoCloseable {
             this.restoreActor = restoreActor == null ? "" : restoreActor;
             this.createdAt = createdAt;
             this.updatedAt = updatedAt;
+            this.rewardActions = rewardActions == null ? List.of() : List.copyOf(rewardActions);
+            this.rollbackActions = rollbackActions == null ? List.of() : List.copyOf(rollbackActions);
         }
 
         public UUID getOpeningId() {
@@ -900,6 +1120,14 @@ public class RewardAuditService implements AutoCloseable {
         public long getUpdatedAt() {
             return updatedAt;
         }
+
+        public List<String> getRewardActions() {
+            return rewardActions;
+        }
+
+        public List<String> getRollbackActions() {
+            return rollbackActions;
+        }
     }
 
     public static final class PendingOpening {
@@ -920,10 +1148,13 @@ public class RewardAuditService implements AutoCloseable {
         private final boolean rewardGranted;
         private final long startedAt;
         private final long updatedAt;
+        private final List<String> rewardActions;
+        private final List<String> rollbackActions;
 
         private PendingOpening(UUID openingId, UUID transactionId, UUID playerId, String playerName, String caseProfile, String runtimeId,
                                String animationId, String rewardId, String rewardName, boolean rareReward, boolean guaranteedReward,
-                               int pityBefore, String serverId, boolean keyConsumed, boolean rewardGranted, long startedAt, long updatedAt) {
+                               int pityBefore, String serverId, boolean keyConsumed, boolean rewardGranted, long startedAt, long updatedAt,
+                               List<String> rewardActions, List<String> rollbackActions) {
             this.openingId = openingId;
             this.transactionId = transactionId;
             this.playerId = playerId;
@@ -941,6 +1172,8 @@ public class RewardAuditService implements AutoCloseable {
             this.rewardGranted = rewardGranted;
             this.startedAt = startedAt;
             this.updatedAt = updatedAt;
+            this.rewardActions = rewardActions == null ? List.of() : List.copyOf(rewardActions);
+            this.rollbackActions = rollbackActions == null ? List.of() : List.copyOf(rollbackActions);
         }
 
         public UUID getOpeningId() {
@@ -1009,6 +1242,20 @@ public class RewardAuditService implements AutoCloseable {
 
         public long getUpdatedAt() {
             return updatedAt;
+        }
+
+        public List<String> getRewardActions() {
+            return rewardActions;
+        }
+
+        public List<String> getRollbackActions() {
+            return rollbackActions;
+        }
+    }
+
+    private static final class SnapshotCaseItem extends CaseItem {
+        private SnapshotCaseItem(String id, String name, List<String> actions, List<String> rollbackActions, boolean rare) {
+            super(id, name, null, actions, rollbackActions, List.of(), java.util.Map.of(), 0, rare);
         }
     }
 

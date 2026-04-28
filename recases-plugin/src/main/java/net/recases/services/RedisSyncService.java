@@ -109,7 +109,7 @@ public final class RedisSyncService implements AutoCloseable {
             return "OK".equalsIgnoreCase(response) ? token : null;
         } catch (RuntimeException exception) {
             plugin.getLogger().warning("Failed to acquire Redis opening lock: " + exception.getMessage());
-            return "";
+            return null;
         }
     }
 
@@ -233,7 +233,7 @@ public final class RedisSyncService implements AutoCloseable {
             UUID playerId = UUID.fromString(parts[1]);
             if (plugin.isEnabled()) {
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    statsService.invalidatePlayer(playerId);
+                    statsService.invalidateRemotePlayer(playerId);
                     plugin.getLeaderboardHolograms().requestRefresh();
                 });
             }

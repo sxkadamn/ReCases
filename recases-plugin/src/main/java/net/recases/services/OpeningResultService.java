@@ -34,8 +34,6 @@ public class OpeningResultService {
             return false;
         }
 
-        plugin.getRewardAudit().markRewardGranted(session);
-        session.markRewardGranted();
         CaseProfile profile = plugin.getCaseService().getProfile(session.getSelectedCase());
         CaseExecutionContext context = plugin.getRewardService().createContext(
                 player,
@@ -56,6 +54,8 @@ public class OpeningResultService {
         plugin.getDiscordWebhooks().notifyReward(player, runtime, session, reward);
         plugin.getTriggerService().fireConfigured("reward-granted", context, profile, reward);
         plugin.getTriggerService().fireConfigured("opening-complete", context.withTrigger("opening-complete"), profile, reward);
+        plugin.getRewardAudit().markRewardGranted(session);
+        session.markRewardGranted();
         plugin.getRewardAudit().discardPending(session);
         plugin.getCaseService().completeOpening(runtime);
         return true;

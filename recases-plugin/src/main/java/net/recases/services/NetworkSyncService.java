@@ -29,13 +29,21 @@ public final class NetworkSyncService implements AutoCloseable {
             return;
         }
 
-        long intervalTicks = Math.max(20L, plugin.getConfig().getLong("settings.network-sync.poll-interval-seconds", 15L) * 20L);
+        boolean redisPrimary = plugin.getRedisSync() != null && plugin.getRedisSync().supportsSharedData();
+        if (redisPrimary && !plugin.getConfig().getBoolean("settings.network-sync.polling-fallback-enabled", true)) {
+            return;
+        }
+
+        long pollSeconds = redisPrimary
+                ? plugin.getConfig().getLong("settings.network-sync.polling-fallback-interval-seconds", 120L)
+                : plugin.getConfig().getLong("settings.network-sync.poll-interval-seconds", 15L);
+        long intervalTicks = Math.max(20L, pollSeconds * 20L);
         refreshTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
             if (plugin.getConfig().getBoolean("settings.network-sync.sync-keys", true)) {
                 keyCache.clear();
             }
             if (plugin.getConfig().getBoolean("settings.network-sync.sync-stats", true) && statsService.isUsingMysqlBackend()) {
-                statsService.reload();
+                statsService.invalidateRemoteCaches();
                 if (plugin.isEnabled()) {
                     Bukkit.getScheduler().runTask(plugin, () -> plugin.getLeaderboardHolograms().requestRefresh());
                 }

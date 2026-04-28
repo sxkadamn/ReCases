@@ -85,43 +85,61 @@ public class PromoCodeService implements AutoCloseable {
 
     public RedemptionResult redeem(OfflinePlayer player, String rawCode) {
         if (player == null) {
-            return RedemptionResult.failed("Игрок не найден.");
+            return RedemptionResult.failed("Player not found.");
         }
 
         String code = normalizeCode(rawCode);
         if (code.isEmpty()) {
-            return RedemptionResult.failed("Промокод пустой.");
+            return RedemptionResult.failed("Promo code is empty.");
         }
 
-        PromoCodeEntry entry = getCode(code);
-        if (entry == null) {
-            return RedemptionResult.failed("Промокод не найден.");
-        }
-        if (!plugin.getCaseService().hasProfile(entry.profileId())) {
-            return RedemptionResult.failed("Профиль кейса для промокода больше не существует.");
-        }
-        if (entry.usedCount() >= entry.maxUses()) {
-            return RedemptionResult.failed("Промокод уже исчерпан.");
-        }
-        if (hasUsed(code, player.getUniqueId())) {
-            return RedemptionResult.failed("Вы уже активировали этот промокод.");
-        }
+        PromoCodeEntry redeemedEntry;
+        try (Connection connection = openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                PromoCodeEntry entry = getCode(connection, code, true);
+                if (entry == null) {
+                    connection.rollback();
+                    return RedemptionResult.failed("Promo code was not found.");
+                }
+                if (!plugin.getCaseService().hasProfile(entry.profileId())) {
+                    connection.rollback();
+                    return RedemptionResult.failed("Promo code profile no longer exists.");
+                }
+                if (entry.usedCount() >= entry.maxUses()) {
+                    connection.rollback();
+                    return RedemptionResult.failed("Promo code usage limit has been reached.");
+                }
+                if (hasUsed(connection, code, player.getUniqueId())) {
+                    connection.rollback();
+                    return RedemptionResult.failed("You have already redeemed this promo code.");
+                }
 
-        try (Connection connection = openConnection();
-             PreparedStatement statement = connection.prepareStatement(insertUseSql())) {
-            statement.setString(1, code);
-            statement.setString(2, player.getUniqueId().toString());
-            statement.setString(3, player.getName() == null ? player.getUniqueId().toString() : player.getName());
-            statement.setLong(4, System.currentTimeMillis());
-            if (statement.executeUpdate() <= 0) {
-                return RedemptionResult.failed("Промокод уже был использован.");
+                try (PreparedStatement statement = connection.prepareStatement(insertUseSql())) {
+                    statement.setString(1, code);
+                    statement.setString(2, player.getUniqueId().toString());
+                    statement.setString(3, player.getName() == null ? player.getUniqueId().toString() : player.getName());
+                    statement.setLong(4, System.currentTimeMillis());
+                    if (statement.executeUpdate() <= 0) {
+                        connection.rollback();
+                        return RedemptionResult.failed("Promo code was already redeemed.");
+                    }
+                }
+
+                connection.commit();
+                redeemedEntry = entry;
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
             }
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to redeem promo code", exception);
         }
 
-        plugin.getStorage().addCase(player, entry.profileId(), entry.amount());
-        return RedemptionResult.success(code, entry.profileId(), entry.amount());
+        plugin.getStorage().addCase(player, redeemedEntry.profileId(), redeemedEntry.amount());
+        return RedemptionResult.success(code, redeemedEntry.profileId(), redeemedEntry.amount());
     }
 
     public List<PromoCodeEntry> listCodes(int limit) {
@@ -137,15 +155,7 @@ public class PromoCodeService implements AutoCloseable {
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<PromoCodeEntry> entries = new ArrayList<>();
                 while (resultSet.next()) {
-                    entries.add(new PromoCodeEntry(
-                            resultSet.getString("code"),
-                            resultSet.getString("profile_id"),
-                            Math.max(1, resultSet.getInt("amount")),
-                            Math.max(1, resultSet.getInt("max_uses")),
-                            Math.max(0, resultSet.getInt("used_count")),
-                            resultSet.getString("created_by"),
-                            resultSet.getLong("created_at")
-                    ));
+                    entries.add(mapCode(resultSet));
                 }
                 return entries;
             }
@@ -160,28 +170,8 @@ public class PromoCodeService implements AutoCloseable {
             return null;
         }
 
-        String sql = "SELECT c.code, c.profile_id, c.amount, c.max_uses, c.created_by, c.created_at, COUNT(u.player_id) AS used_count " +
-                "FROM recases_promo_codes c " +
-                "LEFT JOIN recases_promo_code_uses u ON u.code = c.code " +
-                "WHERE c.code = ? " +
-                "GROUP BY c.code, c.profile_id, c.amount, c.max_uses, c.created_by, c.created_at";
-        try (Connection connection = openConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, code);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    return null;
-                }
-                return new PromoCodeEntry(
-                        resultSet.getString("code"),
-                        resultSet.getString("profile_id"),
-                        Math.max(1, resultSet.getInt("amount")),
-                        Math.max(1, resultSet.getInt("max_uses")),
-                        Math.max(0, resultSet.getInt("used_count")),
-                        resultSet.getString("created_by"),
-                        resultSet.getLong("created_at")
-                );
-            }
+        try (Connection connection = openConnection()) {
+            return getCode(connection, code, false);
         } catch (SQLException exception) {
             throw new RuntimeException("Failed to load promo code", exception);
         }
@@ -191,18 +181,42 @@ public class PromoCodeService implements AutoCloseable {
     public void close() {
     }
 
-    private boolean hasUsed(String code, UUID playerId) {
+    private boolean hasUsed(Connection connection, String code, UUID playerId) throws SQLException {
         String sql = "SELECT 1 FROM recases_promo_code_uses WHERE code = ? AND player_id = ?";
-        try (Connection connection = openConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, code);
             statement.setString(2, playerId.toString());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
-        } catch (SQLException exception) {
-            throw new RuntimeException("Failed to check promo code usage", exception);
         }
+    }
+
+    private PromoCodeEntry getCode(Connection connection, String code, boolean lockForUpdate) throws SQLException {
+        String sql = "SELECT c.code, c.profile_id, c.amount, c.max_uses, c.created_by, c.created_at, COUNT(u.player_id) AS used_count " +
+                "FROM recases_promo_codes c " +
+                "LEFT JOIN recases_promo_code_uses u ON u.code = c.code " +
+                "WHERE c.code = ? " +
+                "GROUP BY c.code, c.profile_id, c.amount, c.max_uses, c.created_by, c.created_at" +
+                (lockForUpdate && isMysql() ? " FOR UPDATE" : "");
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, code);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? mapCode(resultSet) : null;
+            }
+        }
+    }
+
+    private PromoCodeEntry mapCode(ResultSet resultSet) throws SQLException {
+        return new PromoCodeEntry(
+                resultSet.getString("code"),
+                resultSet.getString("profile_id"),
+                Math.max(1, resultSet.getInt("amount")),
+                Math.max(1, resultSet.getInt("max_uses")),
+                Math.max(0, resultSet.getInt("used_count")),
+                resultSet.getString("created_by"),
+                resultSet.getLong("created_at")
+        );
     }
 
     private String insertUseSql() {
